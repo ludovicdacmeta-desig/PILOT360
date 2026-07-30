@@ -516,7 +516,8 @@ function sha256Hex(str){ return sha256(utf8ToBinaryString(str)); }
 function hashPassword(password, salt){ return sha256Hex(password + '::' + salt); }
 // Mot de passe attribué par défaut aux comptes de démonstration à la première installation — à changer via Administration → Utilisateurs.
 const DEFAULT_PASSWORD = 'Pilot1234';
-const ADMIN_DEFAULT_PASSWORD = 'P@$w0rd';
+const ADMIN_DEFAULT_PASSWORD = 'P@$$w0rd';
+const LK_DEFAULT_PASSWORD = 'Pilot360';
 
 /* ---------------- I18N (FR / EN) ---------------- */
 // Dictionnaire de traduction : la clé est le texte français source (tel qu'affiché dans
@@ -1500,6 +1501,10 @@ function seed(){
   const adminAccount = { id:'u10', nom:'Administrateur', email:'admin@pilot360.fr', username:'admin', role:'admin' };
   adminAccount.passwordHash = hashPassword(ADMIN_DEFAULT_PASSWORD, adminAccount.id);
   users.push(adminAccount);
+  // Compte personnel demandé explicitement, avec son propre mot de passe dédié
+  const lkAccount = { id:'u11', nom:'LK', email:'lk@pilot360.fr', username:'LK', role:'admin' };
+  lkAccount.passwordHash = hashPassword(LK_DEFAULT_PASSWORD, lkAccount.id);
+  users.push(lkAccount);
 
   const chantiers = [
     { id:'c1', nom:'Résidence Les Écrins', adresse:'12 rue des Alpes, Grenoble', statut:'en_cours',
