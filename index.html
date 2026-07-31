@@ -1854,7 +1854,7 @@ function nextDocCodeFor(db){
   const n = (db.documents||[]).length + 1;
   return 'DOC-' + String(n).padStart(4,'0');
 }
-function migrateDocForV2(d, db){
+function migrateDocForV2(d, db, codeNumero){
   // Ancien format (avant le module Validation & Contrôle Documentaire 360) : un document = un seul niveau plat,
   // sans historique de versions ni circuit d'approbation. On l'enveloppe dans le nouveau format SANS PERTE
   // DE DONNÉES : les champs existants (nom, version, statut, uploader, date) deviennent la première (et seule)
@@ -1866,7 +1866,9 @@ function migrateDocForV2(d, db){
     auteur: d.uploader || null, statutManuel: statutMap[d.statut] || d.statut || 'brouillon',
     reserves:false, commentaire:'', workflow:null,
   };
-  d.code = d.code || nextDocCodeFor(db);
+  // codeNumero est fourni par l'appelant (migrateDB) pour garantir un code unique par document
+  // même lorsque plusieurs documents de l'ancien format sont migrés dans la même passe.
+  d.code = d.code || ('DOC-' + String(codeNumero).padStart(4,'0'));
   d.dateCreation = d.dateCreation || d.date || todayISO();
   d.workflowId = d.workflowId !== undefined ? d.workflowId : null;
   d.versions = [version];
@@ -1919,8 +1921,9 @@ function migrateDB(db){
   // (historique de versions + circuit d'approbation), sans aucune perte de données.
   if(!db.approvalWorkflows) db.approvalWorkflows = fresh.approvalWorkflows;
   if(!db.auditLogs) db.auditLogs = [];
+  let nextCodeNumero = (db.documents||[]).filter(d=>d.code).length;
   (db.documents||[]).forEach(d=>{
-    if(!Array.isArray(d.versions)) migrateDocForV2(d, db);
+    if(!Array.isArray(d.versions)){ nextCodeNumero++; migrateDocForV2(d, db, nextCodeNumero); }
     d.lotId = d.lotId!==undefined ? d.lotId : null;
   });
   return db;
