@@ -424,6 +424,9 @@ body.dark .map-card{background:linear-gradient(135deg,#1e293b,#0f1729);}
 
 <div class="toast-wrap" id="toast-wrap"></div>
 
+<!-- Sélecteur de fichier partagé pour l'ajout de documents / nouvelles versions (tout format accepté) -->
+<input type="file" id="doc-file-input" style="display:none" onchange="handleDocFileInputChange(this)">
+
 <script>
 /* ============================================================
    PILOT360° — application autonome (localStorage, sans backend)
@@ -1968,27 +1971,29 @@ function saveDB(){
 // stockage local du navigateur (pas de serveur), dont la capacité totale est limitée à quelques Mo seulement —
 // d'où cette limite, annoncée clairement à l'utilisateur plutôt que de le laisser perdre des données.
 const MAX_DOC_FILE_SIZE = 4*1024*1024; // 4 Mo
-// Ouvre le sélecteur de fichier natif du navigateur (tous formats acceptés) et lit le fichier choisi en base64.
-// callback({name, type, size, dataUrl}) est appelé une fois la lecture terminée ; rien n'est appelé si annulé.
+// Ouvre le sélecteur de fichier natif du navigateur (tous formats acceptés, via l'input partagé #doc-file-input)
+// et lit le fichier choisi en base64. callback({name, type, size, dataUrl}) est appelé une fois la lecture
+// terminée ; rien n'est appelé si l'utilisateur annule. Un seul input partagé (plutôt qu'un input créé et
+// détruit à chaque fois) afin qu'il reste disponible pour l'automatisation/les tests comme les autres champs
+// de fichier de l'application (ex. restauration de sauvegarde).
+let __pendingFileCallback = null;
 function pickAndReadFile(callback){
-  const input = document.createElement('input');
-  input.type = 'file';
-  input.style.display = 'none';
-  document.body.appendChild(input);
-  input.addEventListener('change', function(){
-    const file = input.files && input.files[0];
-    document.body.removeChild(input);
-    if(!file) return;
-    if(file.size > MAX_DOC_FILE_SIZE){
-      toast(`Fichier trop volumineux (${Math.round(file.size/1024/1024*10)/10} Mo, maximum ${MAX_DOC_FILE_SIZE/1024/1024} Mo) — cette maquette stocke les fichiers dans votre navigateur, sans serveur, d'où cette limite.`);
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = function(e){ callback({ name:file.name, type:file.type||'application/octet-stream', size:file.size, dataUrl:e.target.result }); };
-    reader.onerror = function(){ toast('Erreur de lecture du fichier'); };
-    reader.readAsDataURL(file);
-  });
-  input.click();
+  __pendingFileCallback = callback;
+  document.getElementById('doc-file-input').click();
+}
+function handleDocFileInputChange(input){
+  const file = input.files && input.files[0];
+  const callback = __pendingFileCallback; __pendingFileCallback = null;
+  input.value = ''; // permet de resélectionner le même fichier une prochaine fois
+  if(!file || !callback) return;
+  if(file.size > MAX_DOC_FILE_SIZE){
+    toast(`Fichier trop volumineux (${Math.round(file.size/1024/1024*10)/10} Mo, maximum ${MAX_DOC_FILE_SIZE/1024/1024} Mo) — cette maquette stocke les fichiers dans votre navigateur, sans serveur, d'où cette limite.`);
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = function(e){ callback({ name:file.name, type:file.type||'application/octet-stream', size:file.size, dataUrl:e.target.result }); };
+  reader.onerror = function(){ toast('Erreur de lecture du fichier'); };
+  reader.readAsDataURL(file);
 }
 // Déconnexion forcée : utilisée à la fois par le bouton "Déconnexion" et par toute opération
 // qui remplace intégralement les données (réinitialisation, restauration d'une sauvegarde),
