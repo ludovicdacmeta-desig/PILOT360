@@ -671,7 +671,12 @@ const I18N_EN = {
   "Active": "Active",
   "🔍 Comparer les 2 versions cochées": "🔍 Compare the 2 checked versions",
   "Cochez exactement 2 versions à comparer": "Check exactly 2 versions to compare",
-  "Comparaison de métadonnées uniquement — cette maquette ne stocke pas de contenu binaire réel de fichier à comparer.": "Metadata comparison only — this demo does not store real binary file content to compare.",
+  "Comparaison de métadonnées uniquement — un fichier réel n'est pas joint à l'une des deux versions.": "Metadata comparison only — a real file is not attached to one of the two versions.",
+  "✓ Fichiers strictement identiques (contenu)": "✓ Files strictly identical (content)",
+  "Impossible de décoder le contenu texte de l'un des fichiers.": "Could not decode the text content of one of the files.",
+  "Fichiers trop volumineux pour une comparaison ligne à ligne — seules les métadonnées ci-dessus sont comparées.": "Files too large for a line-by-line comparison — only the metadata above is compared.",
+  "✗ Contenus différents (fichier non textuel — comparaison ligne à ligne non disponible pour ce format).": "✗ Different content (non-text file — line-by-line comparison unavailable for this format).",
+  "ligne(s)": "line(s)",
   "Commentaire / réserves": "Comment / reservations",
   "Piste d'audit (10 dernières actions)": "Audit trail (last 10 actions)",
   "Aucune action enregistrée": "No action recorded",
@@ -730,8 +735,9 @@ const I18N_EN = {
   "↩️ Retirer mon évaluation": "↩️ Withdraw my assessment",
   "Évaluation soumise — réversible via « Retirer mon évaluation »": "Assessment submitted — reversible via \"Withdraw my assessment\"",
   "Évaluation retirée": "Assessment withdrawn",
-  "Fichier trop volumineux": "File too large",
-  "cette maquette stocke les fichiers dans votre navigateur, sans serveur, d'où cette limite.": "this demo stores files in your browser, with no server, hence this limit.",
+  "Fichier volumineux": "Large file",
+  "lecture en cours...": "reading in progress...",
+  "l'enregistrement pourrait échouer si le stockage local du navigateur est insuffisant.": "saving could fail if the browser's local storage is insufficient.",
   "Erreur de lecture du fichier": "Error reading the file",
   "Document ajouté en brouillon avec son fichier — complétez ses métadonnées puis soumettez-le pour validation": "Document added as draft with its file — complete its metadata then submit it for validation",
   "Nouvelle version ajoutée en brouillon avec son fichier": "New version added as draft with its file",
@@ -1967,10 +1973,12 @@ function saveDB(){
     return false;
   }
 }
-// Taille max par fichier joint à un document. Cette maquette stocke les fichiers en base64 directement dans le
-// stockage local du navigateur (pas de serveur), dont la capacité totale est limitée à quelques Mo seulement —
-// d'où cette limite, annoncée clairement à l'utilisateur plutôt que de le laisser perdre des données.
-const MAX_DOC_FILE_SIZE = 4*1024*1024; // 4 Mo
+// Aucune limite de taille n'est imposée par l'application sur les fichiers joints : le stockage actuel
+// (navigateur, sans serveur) reste techniquement contraint par le quota du navigateur — géré par saveDB()
+// qui annule proprement l'ajout et prévient l'utilisateur en cas de dépassement — mais ce n'est pas une
+// limite arbitraire de l'application elle-même. Un futur passage à un stockage serveur lèvera cette contrainte.
+// Seuil purement informatif au-delà duquel on prévient (sans bloquer) que l'enregistrement local pourrait échouer.
+const LARGE_FILE_WARNING_SIZE = 8*1024*1024; // 8 Mo
 // Ouvre le sélecteur de fichier natif du navigateur (tous formats acceptés, via l'input partagé #doc-file-input)
 // et lit le fichier choisi en base64. callback({name, type, size, dataUrl}) est appelé une fois la lecture
 // terminée ; rien n'est appelé si l'utilisateur annule. Un seul input partagé (plutôt qu'un input créé et
@@ -1986,9 +1994,8 @@ function handleDocFileInputChange(input){
   const callback = __pendingFileCallback; __pendingFileCallback = null;
   input.value = ''; // permet de resélectionner le même fichier une prochaine fois
   if(!file || !callback) return;
-  if(file.size > MAX_DOC_FILE_SIZE){
-    toast(`Fichier trop volumineux (${Math.round(file.size/1024/1024*10)/10} Mo, maximum ${MAX_DOC_FILE_SIZE/1024/1024} Mo) — cette maquette stocke les fichiers dans votre navigateur, sans serveur, d'où cette limite.`);
-    return;
+  if(file.size > LARGE_FILE_WARNING_SIZE){
+    toast(`Fichier volumineux (${fmtFileSize(file.size)}) — lecture en cours... l'enregistrement pourrait échouer si le stockage local du navigateur est insuffisant.`);
   }
   const reader = new FileReader();
   reader.onload = function(e){ callback({ name:file.name, type:file.type||'application/octet-stream', size:file.size, dataUrl:e.target.result }); };
@@ -3741,6 +3748,50 @@ function submitDocVersionUI(documentId, versionNumero){
   toast('Document soumis pour validation');
   renderDocDetail(documentId); renderView(); renderNav();
 }
+// Un fichier est-il de nature textuelle (donc comparable ligne à ligne) ? D'après son type MIME ou son extension.
+function isTextLikeFile(type, fileName){
+  if(type && type.indexOf('text/')===0) return true;
+  const textMimes = ['application/json','application/xml','application/javascript','application/x-javascript','image/svg+xml'];
+  if(type && textMimes.includes(type)) return true;
+  const ext = (fileName||'').toLowerCase().split('.').pop();
+  return ['txt','csv','json','md','markdown','xml','log','yml','yaml','html','htm','css','js','ts','ini','conf','svg'].includes(ext);
+}
+// Décode le contenu texte (UTF-8) d'un fichier stocké en data URL base64. Retourne null si le décodage échoue.
+function decodeBase64ToText(dataUrl){
+  try{
+    const base64 = dataUrl.split(',')[1] || '';
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for(let i=0;i<binary.length;i++) bytes[i] = binary.charCodeAt(i);
+    return new TextDecoder('utf-8').decode(bytes);
+  }catch(e){ return null; }
+}
+// Diff ligne à ligne (plus longue sous-séquence commune) entre deux textes — suffisant pour des fichiers
+// texte de taille raisonnable. Retourne null si les fichiers sont trop volumineux pour un diff en direct
+// dans le navigateur (garde-fou de performance), auquel cas seules les métadonnées restent comparées.
+function diffLines(textA, textB){
+  const a = textA.split('\n'), b = textB.split('\n');
+  const n = a.length, m = b.length;
+  if(n*m > 4000000) return null;
+  const dp = Array.from({length:n+1}, ()=>new Array(m+1).fill(0));
+  for(let i=n-1;i>=0;i--){
+    for(let j=m-1;j>=0;j--){
+      dp[i][j] = a[i]===b[j] ? dp[i+1][j+1]+1 : Math.max(dp[i+1][j], dp[i][j+1]);
+    }
+  }
+  const out = [];
+  let i=0, j=0;
+  while(i<n && j<m){
+    if(a[i]===b[j]){ out.push({type:'same', line:a[i]}); i++; j++; }
+    else if(dp[i+1][j] >= dp[i][j+1]){ out.push({type:'removed', line:a[i]}); i++; }
+    else { out.push({type:'added', line:b[j]}); j++; }
+  }
+  while(i<n){ out.push({type:'removed', line:a[i]}); i++; }
+  while(j<m){ out.push({type:'added', line:b[j]}); j++; }
+  return out;
+}
+// Compare deux versions cochées : métadonnées toujours, plus un vrai diff ligne à ligne pour les fichiers
+// texte, ou une comparaison d'égalité binaire pour les autres formats (PDF, images, etc.).
 function compareCheckedDocVersions(documentId){
   const doc = DB.documents.find(d=>d.id===documentId); if(!doc) return;
   const checked = Array.from(document.querySelectorAll('.doc-cmp-chk:checked')).map(c=>Number(c.value));
@@ -3755,10 +3806,41 @@ function compareCheckedDocVersions(documentId){
     ['Statut', STATUT_DOC[computeDocVersionStatut(v1)].label, STATUT_DOC[computeDocVersionStatut(v2)].label],
     ['Commentaire / réserves', v1.commentaire||'—', v2.commentaire||'—'],
   ];
-  box.innerHTML = `<p class="muted" style="font-size:11px;margin:12px 0 6px">Comparaison de métadonnées uniquement — cette maquette ne stocke pas de contenu binaire réel de fichier à comparer.</p>
-    <table><thead><tr><th></th><th>v${n1}</th><th>v${n2}</th></tr></thead><tbody>
+  const metaHtml = `<table><thead><tr><th></th><th>v${n1}</th><th>v${n2}</th></tr></thead><tbody>
     ${rows.map(([lbl,a,b])=>`<tr><td class="muted">${esc(lbl)}</td><td style="${a!==b?'font-weight:700':''}">${esc(a)}</td><td style="${a!==b?'font-weight:700':''}">${esc(b)}</td></tr>`).join('')}
     </tbody></table>`;
+  let contentHtml;
+  if(v1.fileData && v2.fileData){
+    if(v1.fileData === v2.fileData){
+      contentHtml = `<p style="margin-top:12px"><span class="badge badge-green">✓ Fichiers strictement identiques (contenu)</span></p>`;
+    } else if(isTextLikeFile(v1.fileType, v1.fichier) && isTextLikeFile(v2.fileType, v2.fichier)){
+      const t1 = decodeBase64ToText(v1.fileData), t2 = decodeBase64ToText(v2.fileData);
+      if(t1===null || t2===null){
+        contentHtml = `<p class="muted" style="margin-top:12px">Impossible de décoder le contenu texte de l'un des fichiers.</p>`;
+      } else {
+        const diff = diffLines(t1, t2);
+        if(!diff){
+          contentHtml = `<p class="muted" style="margin-top:12px">Fichiers trop volumineux pour une comparaison ligne à ligne — seules les métadonnées ci-dessus sont comparées.</p>`;
+        } else {
+          const added = diff.filter(d=>d.type==='added').length;
+          const removed = diff.filter(d=>d.type==='removed').length;
+          contentHtml = `<p style="margin-top:12px;font-size:12.5px"><span class="badge badge-orange">+${added} ligne(s)</span> <span class="badge badge-red">-${removed} ligne(s)</span></p>
+            <div style="max-height:320px;overflow:auto;border:1px solid var(--border);border-radius:8px;margin-top:8px;font-family:monospace;font-size:12px">
+              ${diff.map(d=>{
+                const bg = d.type==='added'?'background:var(--success-light)':(d.type==='removed'?'background:var(--danger-light)':'');
+                const prefix = d.type==='added'?'+ ':(d.type==='removed'?'- ':'  ');
+                return `<div style="${bg};padding:1px 8px;white-space:pre-wrap;word-break:break-all">${esc(prefix)}${esc(d.line)}</div>`;
+              }).join('')}
+            </div>`;
+        }
+      }
+    } else {
+      contentHtml = `<p class="muted" style="margin-top:12px">✗ Contenus différents (fichier non textuel — comparaison ligne à ligne non disponible pour ce format).</p>`;
+    }
+  } else {
+    contentHtml = `<p class="muted" style="font-size:11px;margin-top:12px">Comparaison de métadonnées uniquement — un fichier réel n'est pas joint à l'une des deux versions.</p>`;
+  }
+  box.innerHTML = `<div style="margin-top:12px">${metaHtml}${contentHtml}</div>`;
 }
 
 /* ---- Onglet Validation : documents en attente d'une décision, tous chantiers visibles ---- */
