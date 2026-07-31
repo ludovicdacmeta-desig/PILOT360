@@ -441,11 +441,14 @@ let ui = {
   comptaTab:'overview', comptaFilter:'all', bcFilter:'all',
   adminTab:'users', adminSelectedUser:null, adminSelectedChantier:null, adminCrudRole:'admin',
   lotsSort:{col:'chantier',dir:1},
+  docsTab:'registre', docsFilter:'all', docsLotFilter:'all',
 };
 
 const uid = (p='id') => p + '_' + Math.random().toString(36).slice(2,9);
 const todayISO = () => new Date().toISOString().slice(0,10);
 const fmtDate = (iso) => { if(!iso) return '-'; const d = new Date(iso); return d.toLocaleDateString('fr-FR',{day:'2-digit',month:'short',year:'numeric'}); };
+const addDaysISO = (iso, days) => { const d = new Date(iso+'T00:00:00'); d.setDate(d.getDate()+(days||0)); return d.toISOString().slice(0,10); };
+const daysBetweenISO = (isoStart, isoEnd) => { const a = new Date(isoStart+'T00:00:00'), b = new Date(isoEnd+'T00:00:00'); return Math.round((b-a)/86400000); };
 
 /* ---- Authentification : hachage de mot de passe (SHA-256 pur JS, synchrone, sans dépendance externe) ----
    Remarque : cette application étant 100% statique (aucun serveur), il ne s'agit pas d'un stockage
@@ -601,7 +604,7 @@ const I18N_EN = {
   "Aucun document": "No documents",
   "Aucun document à exporter": "No documents to export",
   "+ Ajouter un document": "+ Add a document",
-  "Modifier le document": "Edit document",
+  "Modifier les métadonnées": "Edit metadata",
   "Nom du document": "Document name",
   "Dossier": "Folder",
   "Version": "Version",
@@ -614,6 +617,100 @@ const I18N_EN = {
   "Document supprimé": "Document deleted",
   "Document mis à jour": "Document updated",
   "Bibliothèque de compression indisponible (hors-ligne ?)": "Compression library unavailable (offline?)",
+  "Validation & Contrôle Documentaire 360": "Validation & Document Control 360",
+  "Registre documentaire, circuits d'approbation séquentiels, piste d'audit et pilotage de la validation": "Document registry, sequential approval workflows, audit trail and validation dashboard",
+  "Registre": "Registry",
+  "Validation": "Validation",
+  "Circuits": "Workflows",
+  "Audit": "Audit",
+  "KPI": "KPIs",
+  "L'archive générée classe automatiquement chaque document dans le dossier de son chantier et de sa rubrique (Plans, DCE, DOE...).": "The generated archive automatically sorts each document into its site's folder and category (Drawings, tender docs, as-builts...).",
+  "Document ajouté en brouillon — complétez ses métadonnées puis soumettez-le pour validation": "Document added as draft — complete its metadata then submit it for validation",
+  "Dossier / rubrique": "Folder / category",
+  "Lot concerné": "Related package",
+  "Le renommage ne modifie que la version courante": "Renaming only changes the current version",
+  "l'historique des versions précédentes reste inchangé.": "the history of previous versions remains unchanged.",
+  "Supprimer ce document et tout son historique de versions ? Cette action est irréversible.": "Delete this document and its entire version history? This action is irreversible.",
+  "Brouillon": "Draft",
+  "Soumis pour validation": "Submitted for validation",
+  "En cours de validation": "Under validation",
+  "Approuvé": "Approved",
+  "Approuvé avec réserves": "Approved with comments",
+  "Rejeté": "Rejected",
+  "Périmé (nouvelle version)": "Superseded (newer version)",
+  "Archivé": "Archived",
+  "Statut courant": "Current status",
+  "Version active (opposable)": "Active (binding) version",
+  "📤 Soumettre pour validation": "📤 Submit for validation",
+  "Document soumis pour validation": "Document submitted for validation",
+  "Circuit de validation": "Approval workflow",
+  "Étape en cours": "Current step",
+  "Délai accordé": "Time allowed",
+  "en retard": "overdue",
+  "relance": "reminder",
+  "✓ Valider cette étape": "✓ Approve this step",
+  "✗ Rejeter": "✗ Reject",
+  "En attente de décision": "Awaiting decision",
+  "Motif du rejet (obligatoire) :": "Reason for rejection (required):",
+  "Un motif est requis pour rejeter un document": "A reason is required to reject a document",
+  "Commentaire ou réserve (facultatif, laissez vide si aucune) :": "Comment or reservation (optional, leave blank if none):",
+  "Étape validée": "Step approved",
+  "Document rejeté": "Document rejected",
+  "Historique des versions": "Version history",
+  "non destructif": "non-destructive",
+  "+ Nouvelle version": "+ New version",
+  "Nom du fichier de la nouvelle version :": "New version file name:",
+  "Nouvelle version ajoutée en brouillon": "New version added as draft",
+  "Fichier": "File",
+  "Auteur": "Author",
+  "Date": "Date",
+  "Active": "Active",
+  "🔍 Comparer les 2 versions cochées": "🔍 Compare the 2 checked versions",
+  "Cochez exactement 2 versions à comparer": "Check exactly 2 versions to compare",
+  "Comparaison de métadonnées uniquement — cette maquette ne stocke pas de contenu binaire réel de fichier à comparer.": "Metadata comparison only — this demo does not store real binary file content to compare.",
+  "Commentaire / réserves": "Comment / reservations",
+  "Piste d'audit (10 dernières actions)": "Audit trail (last 10 actions)",
+  "Aucune action enregistrée": "No action recorded",
+  "Fermer": "Close",
+  "Aucune validation en attente": "No validation pending",
+  "Voir le détail": "View details",
+  "✓ Valider l'étape": "✓ Approve step",
+  "Circuits séquentiels : chaque étape doit être validée pour que la suivante démarre. Un rejet à n'importe quelle étape bloque le circuit.": "Sequential workflows: each step must be approved before the next one starts. A rejection at any step blocks the workflow.",
+  "+ Nouveau circuit": "+ New workflow",
+  "Circuit par défaut": "Default workflow",
+  "Nouveau circuit de validation": "New approval workflow",
+  "Modifier circuit de validation": "Edit approval workflow",
+  "Nom du circuit": "Workflow name",
+  "+ Ajouter une étape": "+ Add a step",
+  "Libellé affiché": "Display label",
+  "Délai (j)": "Delay (days)",
+  "Un circuit doit comporter au moins une étape": "A workflow must have at least one step",
+  "Le nom du circuit est obligatoire": "The workflow name is required",
+  "Circuit enregistré": "Workflow saved",
+  "Supprimer ce circuit de validation ?": "Delete this approval workflow?",
+  "Impossible : ce circuit est utilisé par au moins un document": "Not possible: this workflow is used by at least one document",
+  "Circuit supprimé": "Workflow deleted",
+  "Utilisateur": "User",
+  "Action": "Action",
+  "Commentaire": "Comment",
+  "En attente de validation": "Awaiting validation",
+  "sur": "out of",
+  "document(s)": "document(s)",
+  "à reprendre": "to be revised",
+  "aucun": "none",
+  "En retard (SLA)": "Overdue (SLA)",
+  "délai de validation dépassé": "validation deadline exceeded",
+  "Taux d'approbation": "Approval rate",
+  "temps moyen": "average time",
+  "Détail par lot": "Breakdown by package",
+  "Lot": "Package",
+  "Temps moyen": "Average time",
+  "Pas encore de données de lot": "No package data yet",
+  "Création": "Creation",
+  "Validation d'étape": "Step approval",
+  "Rejet": "Rejection",
+  "Nouvelle version": "New version",
+  "Suppression du document": "Document deletion",
   "Planning": "Schedule",
   "Vue Gantt consolidée par chantier": "Consolidated Gantt view by site",
   "Aucune tâche planifiée": "No tasks scheduled",
@@ -1603,16 +1700,46 @@ function seed(){
     { id:'sit2', chantierId:'c2', numero:1, dateEmission:'2026-07-01', montantCumule:3960000, montantPeriode:960000 },
   ];
 
-  const documents = [
-    { id:'d1', chantierId:'c1', dossier:'Plans', nom:'Plan_masse_v3.pdf', version:3, statut:'valide', uploader:'u3', date:'2026-05-02' },
-    { id:'d2', chantierId:'c1', dossier:'Plans', nom:'Plan_facades_v2.pdf', version:2, statut:'en_attente', uploader:'u3', date:'2026-07-01' },
-    { id:'d3', chantierId:'c1', dossier:'DCE', nom:'CCTP_lot_gros_oeuvre.pdf', version:1, statut:'valide', uploader:'u2', date:'2025-10-20' },
-    { id:'d4', chantierId:'c1', dossier:'Contrats', nom:'Marche_entreprise_Rossi.pdf', version:1, statut:'valide', uploader:'u2', date:'2025-11-01' },
-    { id:'d5', chantierId:'c1', dossier:'Photos', nom:'Avancement_facade_juillet.jpg', version:1, statut:'valide', uploader:'u4', date:'2026-07-20' },
-    { id:'d6', chantierId:'c2', dossier:'Plans', nom:'Plan_niveau_R+2.pdf', version:4, statut:'valide', uploader:'u3', date:'2026-06-15' },
-    { id:'d7', chantierId:'c2', dossier:'DOE', nom:'DOE_electricite.pdf', version:1, statut:'en_attente', uploader:'u7', date:'2026-07-22' },
-    { id:'d8', chantierId:'c3', dossier:'DCE', nom:'DCE_complet.pdf', version:1, statut:'valide', uploader:'u2', date:'2026-07-01' },
+  // Registre documentaire normalisé (module Validation & Contrôle Documentaire 360) :
+  // chaque document conserve un historique de versions non-destructif, avec un circuit
+  // d'approbation séquentiel par version (voir buildWorkflowInstance / computeDocVersionStatut).
+  const approvalWorkflows = [
+    { id:'wf1', nom:'Circuit standard (Entreprise → Conducteur → MOE → BCT → MOA)', parDefaut:true, etapes:DEFAULT_WORKFLOW_ETAPES },
+    { id:'wf2', nom:'Circuit court (Conducteur → MOE)', parDefaut:false, etapes:[
+      { role:'conducteur', label:'Conducteur de travaux', delaiJours:3 },
+      { role:'moe', label:'Maîtrise d\'œuvre (MOE)', delaiJours:5 },
+    ] },
   ];
+  const mkVersion = (numero, fichier, dateDebut, auteur, decisions, opts={}) => {
+    const template = opts.etapesTemplate || DEFAULT_WORKFLOW_ETAPES;
+    const version = { numero, fichier, date:dateDebut, dateSoumission: decisions.length?dateDebut:null, auteur,
+      statutManuel: opts.statutManuel||null, reserves: !!opts.reserves, commentaire: opts.commentaire||'',
+      workflow: decisions.length ? buildWorkflowInstance(template, dateDebut, decisions) : null };
+    version.statut = computeDocVersionStatut(version);
+    return version;
+  };
+  const documents = [
+    (()=>{ const v1=mkVersion(1,'Plan_masse_v1.pdf','2025-11-10','u3',['valide','valide','valide','valide','valide'],{statutManuel:'perime'});
+           const v2=mkVersion(2,'Plan_masse_v2.pdf','2026-05-02','u3',['valide','valide','valide','valide','valide']);
+           return { id:'d1', code:'DOC-0001', chantierId:'c1', lotId:'l1', dossier:'Plans', workflowId:null, activeVersionNumero:2, versions:[v1,v2] }; })(),
+    (()=>{ const v1=mkVersion(1,'Plan_facades_v1.pdf','2026-07-01','u3',['valide']);
+           return { id:'d2', code:'DOC-0002', chantierId:'c1', lotId:'l1', dossier:'Plans', workflowId:null, activeVersionNumero:null, versions:[v1] }; })(),
+    (()=>{ const v1=mkVersion(1,'CCTP_lot_gros_oeuvre.pdf','2025-10-20','u2',['valide','valide','valide','valide','valide']);
+           return { id:'d3', code:'DOC-0003', chantierId:'c1', lotId:'l1', dossier:'DCE', workflowId:null, activeVersionNumero:1, versions:[v1] }; })(),
+    (()=>{ const v1=mkVersion(1,'Marche_entreprise_Rossi.pdf','2025-11-01','u2',['valide','valide','valide','valide','valide'],{reserves:true,commentaire:'Réserve mineure sur les pénalités de retard, levée en phase de suivi.'});
+           return { id:'d4', code:'DOC-0004', chantierId:'c1', lotId:'l2', dossier:'Contrats', workflowId:null, activeVersionNumero:1, versions:[v1] }; })(),
+    (()=>{ const v1=mkVersion(1,'Avancement_facade_juillet.jpg','2026-07-20','u4',[]);
+           return { id:'d5', code:'DOC-0005', chantierId:'c1', lotId:null, dossier:'Photos', workflowId:null, activeVersionNumero:null, versions:[v1] }; })(),
+    (()=>{ const v1=mkVersion(1,'Plan_niveau_R+2.pdf','2026-06-15','u3',['valide','valide','valide','valide','valide']);
+           return { id:'d6', code:'DOC-0006', chantierId:'c2', lotId:'l6', dossier:'Plans', workflowId:null, activeVersionNumero:1, versions:[v1] }; })(),
+    (()=>{ const v1=mkVersion(1,'DOE_electricite.pdf','2026-07-10','u7',['valide','valide','rejete']);
+           return { id:'d7', code:'DOC-0007', chantierId:'c2', lotId:'l8', dossier:'DOE', workflowId:null, activeVersionNumero:null, versions:[v1] }; })(),
+    (()=>{ const v1=mkVersion(1,'DCE_complet.pdf','2026-07-25','u2',[null],{etapesTemplate:approvalWorkflows[1].etapes});
+           return { id:'d8', code:'DOC-0008', chantierId:'c3', lotId:'l10', dossier:'DCE', workflowId:'wf2', activeVersionNumero:null, versions:[v1] }; })(),
+    (()=>{ const v1=mkVersion(1,'Reglement_securite_chantier_2025.pdf','2025-09-01','u2',[],{statutManuel:'archive'});
+           return { id:'d9', code:'DOC-0009', chantierId:'c1', lotId:null, dossier:'Contrats', workflowId:null, activeVersionNumero:null, versions:[v1] }; })(),
+  ];
+  documents.forEach(d=>{ d.nom=null; d.version=null; d.statut=null; d.uploader=null; d.date=null; d.dateCreation=d.versions[0].date; syncDocMirror(d); });
 
   const planning = [
     { id:'p1', chantierId:'c1', nom:'Gros œuvre', debut:'2025-11-03', fin:'2026-03-15', avancement:100, jalon:false },
@@ -1710,9 +1837,10 @@ function seed(){
 
   const settings = { currency:'EUR', derogataires:['u1'] };
 
+  const auditLogs = [];
   return { users, chantiers, lots, reserves, documents, planning, rapports, messages, notifications,
     rfis, submittals, journal, avenants, factures, situations, depenses, bonsCommande, objectifs,
-    rolePermissions, permissionOverrides, projectRoles, settings };
+    rolePermissions, permissionOverrides, projectRoles, settings, approvalWorkflows, auditLogs };
 }
 
 function ensureDB(){
@@ -1721,6 +1849,29 @@ function ensureDB(){
   const db = seed();
   localStorage.setItem(DB_KEY, JSON.stringify(db));
   return db;
+}
+function nextDocCodeFor(db){
+  const n = (db.documents||[]).length + 1;
+  return 'DOC-' + String(n).padStart(4,'0');
+}
+function migrateDocForV2(d, db){
+  // Ancien format (avant le module Validation & Contrôle Documentaire 360) : un document = un seul niveau plat,
+  // sans historique de versions ni circuit d'approbation. On l'enveloppe dans le nouveau format SANS PERTE
+  // DE DONNÉES : les champs existants (nom, version, statut, uploader, date) deviennent la première (et seule)
+  // version connue, avec son statut d'origine préservé tel quel (statutManuel), faute de pouvoir reconstituer
+  // un historique de circuit qui n'a jamais existé.
+  const statutMap = { valide:'valide', en_attente:'en_validation', refuse:'rejete' };
+  const version = {
+    numero: d.version || 1, fichier: d.nom, date: d.date || todayISO(), dateSoumission: d.date || null,
+    auteur: d.uploader || null, statutManuel: statutMap[d.statut] || d.statut || 'brouillon',
+    reserves:false, commentaire:'', workflow:null,
+  };
+  d.code = d.code || nextDocCodeFor(db);
+  d.dateCreation = d.dateCreation || d.date || todayISO();
+  d.workflowId = d.workflowId !== undefined ? d.workflowId : null;
+  d.versions = [version];
+  d.activeVersionNumero = (version.statutManuel==='valide' || version.statutManuel==='valide_reserves') ? version.numero : null;
+  syncDocMirror(d);
 }
 function migrateDB(db){
   const fresh = seed();
@@ -1763,6 +1914,14 @@ function migrateDB(db){
         db.rolePermissions[role].push(p.key);
       }
     });
+  });
+  // Module Validation & Contrôle Documentaire 360 : enveloppe les documents existants dans le nouveau format
+  // (historique de versions + circuit d'approbation), sans aucune perte de données.
+  if(!db.approvalWorkflows) db.approvalWorkflows = fresh.approvalWorkflows;
+  if(!db.auditLogs) db.auditLogs = [];
+  (db.documents||[]).forEach(d=>{
+    if(!Array.isArray(d.versions)) migrateDocForV2(d, db);
+    d.lotId = d.lotId!==undefined ? d.lotId : null;
   });
   return db;
 }
@@ -1907,11 +2066,209 @@ const STATUT_RESERVE = {
   levee:{label:'Levée', cls:'badge-green'},
 };
 const PRIORITE = { haute:{label:'Haute',cls:'badge-red'}, moyenne:{label:'Moyenne',cls:'badge-orange'}, basse:{label:'Basse',cls:'badge-gray'} };
-const STATUT_DOC = { valide:{label:'Validé',cls:'badge-green'}, en_attente:{label:'En attente',cls:'badge-orange'}, refuse:{label:'Refusé',cls:'badge-red'} };
+// Référentiel normalisé à 8 statuts (inspiré des pratiques ACC/Procore), remplace l'ancien statut à 3 états.
+const STATUT_DOC = {
+  brouillon:        { label:'Brouillon',                cls:'badge-gray'  },
+  soumis:            { label:'Soumis pour validation',   cls:'badge-blue'  },
+  en_validation:     { label:'En cours de validation',   cls:'badge-orange'},
+  valide:            { label:'Approuvé',                 cls:'badge-green' },
+  valide_reserves:   { label:'Approuvé avec réserves',   cls:'badge-green' },
+  rejete:            { label:'Rejeté',                   cls:'badge-red'   },
+  perime:            { label:'Périmé (nouvelle version)',cls:'badge-gray'  },
+  archive:           { label:'Archivé',                  cls:'badge-gray'  },
+  // Alias de compatibilité pour d'anciennes données non migrées
+  en_attente:        { label:'En cours de validation',   cls:'badge-orange'},
+  refuse:            { label:'Rejeté',                   cls:'badge-red'   },
+};
+// Étapes de circuit de validation par défaut, calquées sur le circuit type Entreprise → Conducteur → MOE → BCT → MOA
+const DEFAULT_WORKFLOW_ETAPES = [
+  { role:'soustraitant', label:'Entreprise', delaiJours:5 },
+  { role:'conducteur',   label:'Conducteur de travaux', delaiJours:3 },
+  { role:'moe',          label:'Maîtrise d\'œuvre (MOE)', delaiJours:5 },
+  { role:'bct',          label:'Bureau de contrôle (BCT)', delaiJours:5 },
+  { role:'client',       label:'Maîtrise d\'ouvrage (MOA)', delaiJours:7 },
+];
+// Seuils de relance automatique (jours après soumission d'une étape sans décision)
+const REMINDER_TIERS = [3,7,10];
 const STATUT_RFI = { ouverte:{label:'Ouverte',cls:'badge-red'}, repondue:{label:'Répondue',cls:'badge-green'}, fermee:{label:'Fermée',cls:'badge-gray'} };
 const STATUT_SUBMITTAL = { soumis:{label:'Soumis',cls:'badge-gray'}, en_revue:{label:'En revue',cls:'badge-orange'}, approuve:{label:'Approuvé',cls:'badge-green'}, revision_requise:{label:'Révision requise',cls:'badge-orange'}, rejete:{label:'Rejeté',cls:'badge-red'} };
 const STATUT_AVENANT = { propose:{label:'Proposé',cls:'badge-orange'}, approuve:{label:'Approuvé',cls:'badge-green'}, refuse:{label:'Refusé',cls:'badge-red'} };
 const STATUT_FACTURE = { brouillon:{label:'Brouillon',cls:'badge-gray'}, envoyee:{label:'Envoyée',cls:'badge-blue'}, payee:{label:'Payée',cls:'badge-green'}, en_retard:{label:'En retard',cls:'badge-red'} };
+
+/* ============================================================
+   MOTEUR DE VALIDATION & CONTRÔLE DOCUMENTAIRE 360
+   Registre documentaire normalisé + historique de versions non-destructif +
+   circuits d'approbation séquentiels configurables + piste d'audit + KPI.
+   Inspiré des recommandations d'une analyse comparative face à Autodesk
+   Construction Cloud et Procore. Cette maquette reste 100% cliente
+   (sans backend), donc : pas de vrai stockage binaire de fichier, pas de
+   vraies notifications poussées (relances calculées et affichées seulement),
+   pas d'adresse IP dans la piste d'audit (donnée non disponible côté client).
+   ============================================================ */
+
+// Construit une instance de circuit de validation pour une version de document, à partir d'un gabarit d'étapes.
+// decisions[i] vaut 'valide' | 'rejete' | null/undefined (étape pas encore décidée -> devient l'étape active si tout ce qui précède est validé).
+function buildWorkflowInstance(etapesTemplate, dateDebut, decisions=[]){
+  let blocked = false;
+  let curDate = dateDebut;
+  const etapes = etapesTemplate.map((e,i)=>{
+    const decision = decisions[i] || null;
+    let statut, dateDecision=null, dateDebutEtape=null;
+    if(blocked){ statut='a_venir'; }
+    else if(decision==='valide' || decision==='rejete'){
+      dateDebutEtape = curDate;
+      statut = decision;
+      dateDecision = addDaysISO(curDate, 1);
+      curDate = dateDecision;
+      if(decision==='rejete') blocked = true;
+    } else {
+      dateDebutEtape = curDate;
+      statut = 'en_attente';
+      blocked = true;
+    }
+    return { ordre:i+1, role:e.role, label:e.label, delaiJours:e.delaiJours, statut,
+      decideur:null, dateDecision, commentaire:'',
+      dateDebut: dateDebutEtape, dateLimite: dateDebutEtape ? addDaysISO(dateDebutEtape, e.delaiJours) : null };
+  });
+  const statutGlobal = etapes.some(e=>e.statut==='rejete') ? 'rejete' : (etapes.every(e=>e.statut==='valide') ? 'valide' : 'en_cours');
+  return { etapes, statutGlobal, dateDebut, dateFin: (statutGlobal!=='en_cours') ? etapes.filter(e=>e.dateDecision).slice(-1)[0]?.dateDecision : null };
+}
+// Statut normalisé (8 états) d'une version, dérivé de son circuit d'approbation en cours.
+function computeDocVersionStatut(version){
+  if(version.statutManuel) return version.statutManuel; // ex: archivage manuel, sans circuit
+  if(!version.workflow) return 'brouillon';
+  const wf = version.workflow;
+  if(wf.statutGlobal === 'rejete') return 'rejete';
+  if(wf.statutGlobal === 'valide') return version.reserves ? 'valide_reserves' : 'valide';
+  const current = wf.etapes.find(e=>e.statut==='en_attente');
+  if(current && current.ordre===1) return 'soumis';
+  return 'en_validation';
+}
+// Version "active" d'un document = la dernière version approuvée (ou, à défaut, la plus récente).
+function docActiveVersion(doc){
+  if(doc.activeVersionNumero){ const v = doc.versions.find(v=>v.numero===doc.activeVersionNumero); if(v) return v; }
+  return doc.versions[doc.versions.length-1];
+}
+function docLatestVersion(doc){ return doc.versions[doc.versions.length-1]; }
+// Recalcule et synchronise les champs miroir de compatibilité (nom/version/statut/date/uploader) sur le document
+// à partir de sa version active, afin que les vues existantes (tableaux, exports, dashboard) restent correctes.
+function syncDocMirror(doc){
+  const active = docActiveVersion(doc);
+  const latest = docLatestVersion(doc);
+  const ref = latest || active;
+  doc.nom = ref.fichier; doc.version = ref.numero; doc.statut = computeDocVersionStatut(ref);
+  doc.uploader = ref.auteur; doc.date = ref.date;
+}
+function docWorkflowTemplate(doc){
+  if(doc.workflowId){ const wf = DB.approvalWorkflows.find(w=>w.id===doc.workflowId); if(wf) return wf.etapes; }
+  return DEFAULT_WORKFLOW_ETAPES;
+}
+// Étape actuellement en attente de décision pour une version (null si aucune, ou si circuit clos).
+function docCurrentStep(version){ return version.workflow ? version.workflow.etapes.find(e=>e.statut==='en_attente') : null; }
+// L'utilisateur courant peut-il décider l'étape active de cette version ?
+function canDecideDocStep(version, chantierId){
+  const step = docCurrentStep(version);
+  if(!step || !currentUser) return false;
+  if(currentUser.role==='admin') return true;
+  return effectiveRole(currentUser.id, chantierId) === step.role;
+}
+// Soumet une version en brouillon dans le circuit de validation (démarre la 1ère étape).
+function submitDocVersion(documentId, versionNumero){
+  const doc = DB.documents.find(d=>d.id===documentId); if(!doc) return;
+  const version = doc.versions.find(v=>v.numero===versionNumero); if(!version) return;
+  const etapesTemplate = docWorkflowTemplate(doc);
+  version.dateSoumission = todayISO();
+  version.workflow = buildWorkflowInstance(etapesTemplate, todayISO(), []);
+  version.statutManuel = null;
+  syncDocMirror(doc); saveDB();
+  logAudit('soumission', doc.id, versionNumero, 'Soumission pour validation');
+}
+// Décide (valide/rejette) l'étape active de la version courante, avec application stricte du séquencement.
+function decideDocStep(documentId, versionNumero, decision, commentaire){
+  const doc = DB.documents.find(d=>d.id===documentId); if(!doc) return;
+  const version = doc.versions.find(v=>v.numero===versionNumero); if(!version || !version.workflow) return;
+  const step = docCurrentStep(version); if(!step) return;
+  step.statut = decision; step.dateDecision = todayISO(); step.decideur = currentUser ? currentUser.id : null; step.commentaire = commentaire||'';
+  if(decision==='rejete'){
+    version.workflow.statutGlobal = 'rejete';
+  } else {
+    if(commentaire && commentaire.trim()) version.reserves = true;
+    const idx = version.workflow.etapes.findIndex(e=>e.ordre===step.ordre);
+    const next = version.workflow.etapes[idx+1];
+    if(next){ next.statut = 'en_attente'; next.dateDebut = todayISO(); next.dateLimite = addDaysISO(todayISO(), next.delaiJours); }
+    else { version.workflow.statutGlobal = 'valide'; }
+  }
+  if(version.workflow.statutGlobal==='valide'){
+    // La nouvelle version devient la version active ; l'ancienne version active passe au statut "Périmé".
+    if(doc.activeVersionNumero && doc.activeVersionNumero !== version.numero){
+      const oldActive = doc.versions.find(v=>v.numero===doc.activeVersionNumero);
+      if(oldActive && (oldActive.statut==='valide' || oldActive.statut==='valide_reserves')) oldActive.statutManuel = 'perime';
+    }
+    doc.activeVersionNumero = version.numero;
+  }
+  syncDocMirror(doc); saveDB();
+  logAudit(decision==='rejete'?'rejet':'validation', doc.id, versionNumero, commentaire||'', `Étape : ${step.label}`);
+}
+// Ajoute une nouvelle version (brouillon) à un document existant, sans jamais supprimer l'historique précédent.
+function addDocVersion(doc, fichier, auteur){
+  const numero = Math.max(...doc.versions.map(v=>v.numero)) + 1;
+  const version = { numero, fichier, date:todayISO(), dateSoumission:null, auteur, statut:'brouillon', statutManuel:null, reserves:false, commentaire:'', workflow:null };
+  doc.versions.push(version);
+  syncDocMirror(doc);
+  logAudit('nouvelle_version', doc.id, numero, 'Nouvelle version créée (brouillon)');
+  return version;
+}
+// Piste d'audit : qui / quand / quoi / version / commentaire. Pas d'adresse IP (non disponible côté client statique).
+function logAudit(action, documentId, versionNumero, commentaire, detail){
+  if(!DB.auditLogs) DB.auditLogs = [];
+  const doc = DB.documents.find(d=>d.id===documentId);
+  DB.auditLogs.push({
+    id:uid('audit'), date:new Date().toISOString(), userId: currentUser?currentUser.id:null,
+    action, documentId, chantierId: doc?doc.chantierId:null, versionNumero, commentaire:commentaire||'', detail:detail||''
+  });
+}
+// Info SLA/retard pour une étape en attente : jours écoulés depuis son démarrage, retard éventuel, palier de relance atteint.
+function stepSLAInfo(step){
+  if(!step || step.statut!=='en_attente' || !step.dateDebut) return null;
+  const joursEcoules = daysBetweenISO(step.dateDebut, todayISO());
+  const enRetard = step.dateLimite ? (todayISO() > step.dateLimite) : false;
+  const palier = REMINDER_TIERS.filter(t=>joursEcoules>=t).pop() || null;
+  return { joursEcoules, enRetard, palier };
+}
+// Temps moyen de validation (en jours, soumission -> décision finale) sur un ensemble de documents.
+function avgValidationTimeDays(docs){
+  const durees = [];
+  docs.forEach(d=>d.versions.forEach(v=>{
+    if(v.workflow && v.workflow.statutGlobal!=='en_cours' && v.dateSoumission){
+      const fin = v.workflow.dateFin || v.workflow.etapes.filter(e=>e.dateDecision).slice(-1)[0]?.dateDecision;
+      if(fin) durees.push(daysBetweenISO(v.dateSoumission, fin));
+    }
+  }));
+  if(!durees.length) return null;
+  return Math.round((durees.reduce((s,x)=>s+x,0)/durees.length)*10)/10;
+}
+// Calcule les indicateurs KPI de validation documentaire pour un ensemble de documents (globalement ou par lot).
+function docsKPI(docs){
+  let enAttente=0, rejetes=0, retards=0, finalises=0, approuves=0;
+  docs.forEach(d=>{
+    const v = docLatestVersion(d);
+    const st = computeDocVersionStatut(v);
+    if(st==='soumis' || st==='en_validation') enAttente++;
+    if(st==='rejete') rejetes++;
+    if(st==='valide' || st==='valide_reserves' || st==='rejete') finalises++;
+    if(st==='valide' || st==='valide_reserves') approuves++;
+    const step = docCurrentStep(v);
+    const sla = stepSLAInfo(step);
+    if(sla && sla.enRetard) retards++;
+  });
+  const tempsMoyen = avgValidationTimeDays(docs);
+  const tauxApprobation = finalises ? Math.round((approuves/finalises)*100) : null;
+  return { total:docs.length, enAttente, rejetes, retards, tempsMoyen, tauxApprobation };
+}
+function nextDocCode(){
+  const n = (DB.documents||[]).length + 1;
+  return 'DOC-' + String(n).padStart(4,'0');
+}
 
 function badge(map,key){ const s=map[key]||{label:key,cls:'badge-gray'}; return `<span class="badge ${s.cls}">${s.label}</span>`; }
 
@@ -2994,20 +3351,27 @@ function saveReserve(id){
   saveDB(); closeModal(); toast('Réserve mise à jour'); renderView(); renderNav();
 }
 
-/* ---- Documents / GED ---- */
+/* ---- Documents / GED — Registre + Validation & Contrôle Documentaire 360 ---- */
 function docTreeHtml(docs, chantierId){
   const folders = [...new Set(docs.map(d=>d.dossier))];
   const html = folders.map(f=>{
     const files = docs.filter(d=>d.dossier===f);
     return `<div class="doc-folder">📁 ${f} <span class="muted" style="font-weight:400;font-size:11.5px">(${files.length})</span></div>
-    ${files.map(d=>`<div class="doc-file">
-      <span>📄</span><span class="name">${esc(d.nom)}${d.lotId?` <span class="badge badge-gray" style="font-size:10px">${esc(lotLabel(d.lotId))}</span>`:''}</span>
-      <span class="meta">v${d.version} · ${esc(userById(d.uploader).nom)} · ${fmtDate(d.date)}</span>
+    ${files.map(d=>{
+      const v = docLatestVersion(d);
+      const step = docCurrentStep(v);
+      const sla = stepSLAInfo(step);
+      return `<div class="doc-file">
+      <span>📄</span>
+      <span class="name">${esc(d.code)} — ${esc(d.nom)}${d.lotId?` <span class="badge badge-gray" style="font-size:10px">${esc(lotLabel(d.lotId))}</span>`:''}</span>
+      <span class="meta">v${d.version||1}${d.versions.length>1?' / '+d.versions.length:''} · ${esc(userById(d.uploader)?.nom||'—')} · ${fmtDate(d.date)}</span>
       ${badge(STATUT_DOC,d.statut)}
-      ${(can('doc.validate',chantierId) && d.statut==='en_attente')?`<button class="btn btn-sm btn-secondary" onclick="setDocStatus('${d.id}','valide')">Valider</button>`:''}
+      ${sla&&sla.enRetard?`<span class="badge badge-red" style="font-size:10px">Retard</span>`:''}
+      <button class="btn btn-sm btn-ghost" onclick="openDocDetail('${d.id}')" title="Détails, versions, circuit">🔍</button>
       ${can('doc.upload',chantierId)?`<button class="btn btn-sm btn-ghost" onclick="openDocForm('${d.id}')">✏️</button>`:''}
       ${canCRUD('documents','delete',chantierId)?`<button class="btn btn-sm btn-ghost" onclick="deleteDoc('${d.id}')">🗑️</button>`:''}
-    </div>`).join('')}`;
+    </div>`;
+    }).join('')}`;
   }).join('');
   return `<div class="card">
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
@@ -3027,7 +3391,8 @@ async function downloadChantierDocuments(chantierId){
   docs.forEach(d=>{
     const safeDossier = (d.dossier||'Autres').replace(/[\\/:*?"<>|]/g,'-');
     const safeNom = d.nom.replace(/[\\/:*?"<>|]/g,'-');
-    const fiche = `Document : ${d.nom}\nChantier : ${c.nom}\nDossier : ${d.dossier}${d.lotId?'\nLot : '+lotLabel(d.lotId):''}\nVersion : ${d.version}\nStatut : ${STATUT_DOC[d.statut]?STATUT_DOC[d.statut].label:d.statut}\nUploadé par : ${userById(d.uploader).nom}\nDate : ${fmtDate(d.date)}\n\n(Fiche de démonstration — cette maquette ne stocke pas de fichier binaire réel pour ce document.)`;
+    const v = docLatestVersion(d);
+    const fiche = `Document : ${d.code} — ${d.nom}\nChantier : ${c.nom}\nDossier : ${d.dossier}${d.lotId?'\nLot : '+lotLabel(d.lotId):''}\nRévision : v${d.version} (${d.versions.length} version(s) dans l'historique)\nStatut : ${STATUT_DOC[d.statut]?STATUT_DOC[d.statut].label:d.statut}\nAuteur : ${userById(d.uploader)?.nom||'—'}\nDate : ${fmtDate(d.date)}\n\n(Fiche de démonstration — cette maquette ne stocke pas de fichier binaire réel pour ce document.)`;
     zip.file(`${safeDossier}/${safeNom}.txt`, fiche);
   });
   const blob = await zip.generateAsync({type:'blob'});
@@ -3038,29 +3403,36 @@ async function downloadChantierDocuments(chantierId){
   setTimeout(()=>URL.revokeObjectURL(url), 2000);
   toast(docs.length+' document(s) exporté(s)');
 }
-function setDocStatus(id,statut){ const d = DB.documents.find(d=>d.id===id); d.statut=statut; saveDB(); toast('Document validé'); renderView(); }
 function uploadDoc(chantierId){
-  const nom = 'Nouveau_document_'+(DB.documents.length+1)+'.pdf';
-  DB.documents.push({ id:uid('d'), chantierId, dossier:'Plans', lotId:null, nom, version:1, statut:'en_attente', uploader:currentUser.id, date:todayISO() });
-  saveDB(); toast('Document ajouté (démo)'); renderView();
+  const code = nextDocCode();
+  const doc = { id:uid('d'), code, chantierId, lotId:null, dossier:'Plans', workflowId:null, dateCreation:todayISO(),
+    activeVersionNumero:null,
+    versions:[ { numero:1, fichier:'Nouveau_document_'+(DB.documents.length+1)+'.pdf', date:todayISO(), dateSoumission:null,
+      auteur:currentUser.id, statutManuel:null, reserves:false, commentaire:'', workflow:null } ] };
+  syncDocMirror(doc);
+  DB.documents.push(doc);
+  logAudit('creation', doc.id, 1, '', 'Document créé (brouillon)');
+  saveDB(); toast('Document ajouté en brouillon — complétez ses métadonnées puis soumettez-le pour validation'); renderView();
 }
 function openDocForm(id){
   const d = DB.documents.find(x=>x.id===id);
   if(!d) return;
   const lots = lotsForChantier(d.chantierId);
+  const latest = docLatestVersion(d);
   openModal(`
-    <h2>Modifier le document</h2>
-    <div class="form-row"><label>Nom du document</label><input id="df-nom" value="${esc(d.nom)}"></div>
+    <h2>Modifier les métadonnées</h2>
+    <div class="form-row"><label>Nom du document (version courante v${latest.numero})</label><input id="df-nom" value="${esc(latest.fichier)}"></div>
     <div class="form-grid">
-      <div class="form-row"><label>Dossier</label><input id="df-dossier" value="${esc(d.dossier)}"></div>
-      <div class="form-row"><label>Version</label><input id="df-version" type="number" min="1" value="${d.version}"></div>
+      <div class="form-row"><label>Dossier / rubrique</label><input id="df-dossier" value="${esc(d.dossier)}"></div>
       <div class="form-row"><label>Lot concerné</label><select id="df-lot"><option value="">Général (aucun lot)</option>${lots.map(l=>`<option value="${l.id}" ${d.lotId===l.id?'selected':''}>${esc(l.nom)}</option>`).join('')}</select></div>
     </div>
+    <p class="muted" style="font-size:11px">Le renommage ne modifie que la version courante (v${latest.numero}) ; l'historique des versions précédentes reste inchangé.</p>
     <div class="modal-foot"><button class="btn btn-secondary" onclick="closeModal()">Annuler</button><button class="btn btn-primary" onclick="saveDoc('${d.id}')">Enregistrer</button></div>
   `);
 }
 function deleteDoc(id){
-  if(!confirm('Supprimer ce document ?')) return;
+  if(!confirm('Supprimer ce document et tout son historique de versions ? Cette action est irréversible.')) return;
+  logAudit('suppression', id, null, '', 'Document supprimé');
   DB.documents = DB.documents.filter(d=>d.id!==id); saveDB(); toast('Document supprimé'); renderView();
 }
 function saveDoc(id){
@@ -3068,9 +3440,287 @@ function saveDoc(id){
   if(!d) return;
   const nom = document.getElementById('df-nom').value.trim();
   if(!nom){ toast('Le nom est obligatoire'); return; }
-  d.nom = nom; d.dossier = document.getElementById('df-dossier').value||'Autres';
-  d.version = Number(document.getElementById('df-version').value)||d.version; d.lotId = document.getElementById('df-lot').value||null;
+  const latest = docLatestVersion(d);
+  latest.fichier = nom;
+  d.dossier = document.getElementById('df-dossier').value||'Autres';
+  d.lotId = document.getElementById('df-lot').value||null;
+  syncDocMirror(d);
   saveDB(); closeModal(); toast('Document mis à jour'); renderView();
+}
+
+/* ---- Fiche document : historique de versions, circuit d'approbation, comparaison, audit ---- */
+function openDocDetail(id){ renderDocDetail(id); }
+function renderDocDetail(id){
+  const d = DB.documents.find(x=>x.id===id);
+  if(!d) return;
+  const c = chantierById(d.chantierId);
+  const latest = docLatestVersion(d);
+  const active = docActiveVersion(d);
+  const versions = d.versions.slice().reverse();
+  const logs = (DB.auditLogs||[]).filter(l=>l.documentId===id).slice().sort((a,b)=>new Date(b.date)-new Date(a.date)).slice(0,10);
+  openModal(`
+    <h2 style="margin-bottom:2px">${esc(d.code)} — ${esc(latest.fichier)}</h2>
+    <p class="muted" style="font-size:12.5px;margin:0 0 14px">${esc(c.nom)}${d.lotId?' · '+esc(lotLabel(d.lotId)):''} · Dossier : ${esc(d.dossier)} · Créé le ${fmtDate(d.dateCreation)}</p>
+    <div class="form-grid" style="margin-bottom:12px">
+      <div><span class="muted" style="font-size:11.5px">Statut courant</span><div style="margin-top:4px">${badge(STATUT_DOC, computeDocVersionStatut(latest))}</div></div>
+      <div><span class="muted" style="font-size:11.5px">Version active (opposable)</span><div style="margin-top:4px">${active?('v'+active.numero+' — '+esc(active.fichier)):'—'}</div></div>
+    </div>
+
+    ${(computeDocVersionStatut(latest)==='brouillon' && can('doc.upload', d.chantierId)) ? `<button class="btn btn-primary btn-sm" style="margin-bottom:14px" onclick="submitDocVersionUI('${d.id}',${latest.numero})">📤 Soumettre pour validation</button>` : ''}
+
+    ${latest.workflow ? renderWorkflowStepper(d, latest) : ''}
+
+    <div class="section-title" style="margin:18px 0 10px">
+      <h2 style="font-size:14px">Historique des versions (${d.versions.length}) — non destructif</h2>
+      ${can('doc.upload', d.chantierId) ? `<button class="btn btn-sm btn-secondary" onclick="addDocVersionUI('${d.id}')">+ Nouvelle version</button>` : ''}
+    </div>
+    <div class="card">
+      <table>
+        <thead><tr><th></th><th>Version</th><th>Fichier</th><th>Auteur</th><th>Date</th><th>Statut</th></tr></thead>
+        <tbody>
+        ${versions.map(v=>`<tr>
+          <td><input type="checkbox" class="doc-cmp-chk" value="${v.numero}"></td>
+          <td>v${v.numero}${d.activeVersionNumero===v.numero?' <span class="badge badge-blue" style="font-size:9.5px">Active</span>':''}</td>
+          <td>${esc(v.fichier)}</td>
+          <td>${esc(userById(v.auteur)?.nom||'—')}</td>
+          <td>${fmtDate(v.date)}</td>
+          <td>${badge(STATUT_DOC, computeDocVersionStatut(v))}</td>
+        </tr>`).join('')}
+        </tbody>
+      </table>
+      ${versions.length>1?`<button class="btn btn-sm btn-ghost" style="margin-top:10px" onclick="compareCheckedDocVersions('${d.id}')">🔍 Comparer les 2 versions cochées</button>`:''}
+      <div id="doc-compare-box"></div>
+    </div>
+
+    <div class="section-title" style="margin:18px 0 10px"><h2 style="font-size:14px">Piste d'audit (10 dernières actions)</h2></div>
+    <div class="card" style="font-size:12.5px">
+      ${logs.length? logs.map(l=>`<div style="padding:6px 0;border-bottom:1px solid var(--border)"><b>${esc(userById(l.userId)?.nom||'Système')}</b> — ${esc(AUDIT_ACTION_LABELS[l.action]||l.action)}${l.detail?' ('+esc(l.detail)+')':''} <span class="muted">· ${new Date(l.date).toLocaleString('fr-FR')}</span>${l.commentaire?`<div class="muted" style="margin-top:2px">« ${esc(l.commentaire)} »</div>`:''}</div>`).join('') : '<span class="muted">Aucune action enregistrée</span>'}
+    </div>
+
+    <div class="modal-foot"><button class="btn btn-secondary" onclick="closeModal()">Fermer</button></div>
+  `);
+}
+const AUDIT_ACTION_LABELS = {
+  creation:'Création', soumission:'Soumission pour validation', validation:"Validation d'étape",
+  rejet:'Rejet', nouvelle_version:'Nouvelle version', suppression:'Suppression du document',
+};
+function renderWorkflowStepper(d, version){
+  const canDecide = canDecideDocStep(version, d.chantierId);
+  const step = docCurrentStep(version);
+  const sla = stepSLAInfo(step);
+  return `
+    <div class="section-title" style="margin:14px 0 10px"><h2 style="font-size:14px">Circuit de validation (v${version.numero})</h2></div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:10px">
+      ${version.workflow.etapes.map((e,i)=>{
+        const icon = e.statut==='valide'?'✅':e.statut==='rejete'?'❌':e.statut==='en_attente'?'⏳':'⚪';
+        const cls = e.statut==='valide'?'badge-green':e.statut==='rejete'?'badge-red':e.statut==='en_attente'?'badge-orange':'badge-gray';
+        return (i>0?'<span class="muted">→</span>':'')+`<span class="badge ${cls}" title="${esc(e.label)}${e.dateDecision?' — décidé le '+fmtDate(e.dateDecision):''}">${icon} ${esc(e.label)}</span>`;
+      }).join('')}
+    </div>
+    ${step?`<div class="card" style="background:var(--bg);margin-bottom:10px">
+      <b style="font-size:13px">Étape en cours : ${esc(step.label)}</b>
+      <div class="muted" style="font-size:12px;margin-top:4px">Délai accordé : ${step.delaiJours} j · échéance ${fmtDate(step.dateLimite)}
+        ${sla&&sla.enRetard?` · <span style="color:var(--danger);font-weight:700">en retard</span>`:''}
+        ${sla&&sla.palier?` · relance J+${sla.palier}`:''}
+      </div>
+      ${canDecide?`<div style="display:flex;gap:8px;margin-top:10px">
+        <button class="btn btn-sm btn-secondary" onclick="decideDocStepUI('${d.id}',${version.numero},'valide')">✓ Valider cette étape</button>
+        <button class="btn btn-sm btn-danger" onclick="decideDocStepUI('${d.id}',${version.numero},'rejete')">✗ Rejeter</button>
+      </div>`:`<p class="muted" style="font-size:11.5px;margin-top:8px">En attente de décision : ${ROLES[step.role].label}</p>`}
+    </div>`:''}
+    ${version.workflow.etapes.filter(e=>e.commentaire).map(e=>`<div class="muted" style="font-size:11.5px;margin-bottom:4px">💬 ${esc(e.label)} : « ${esc(e.commentaire)} »</div>`).join('')}
+  `;
+}
+function decideDocStepUI(documentId, versionNumero, decision){
+  let commentaire = '';
+  if(decision==='rejete'){
+    commentaire = prompt('Motif du rejet (obligatoire) :') || '';
+    if(!commentaire.trim()){ toast('Un motif est requis pour rejeter un document'); return; }
+  } else {
+    commentaire = prompt('Commentaire ou réserve (facultatif, laissez vide si aucune) :') || '';
+  }
+  decideDocStep(documentId, versionNumero, decision, commentaire);
+  toast(decision==='valide' ? 'Étape validée' : 'Document rejeté');
+  renderDocDetail(documentId); renderView(); renderNav();
+}
+function addDocVersionUI(documentId){
+  const doc = DB.documents.find(d=>d.id===documentId); if(!doc) return;
+  const fichier = prompt('Nom du fichier de la nouvelle version :', doc.nom);
+  if(!fichier || !fichier.trim()) return;
+  addDocVersion(doc, fichier.trim(), currentUser.id);
+  saveDB();
+  toast('Nouvelle version ajoutée en brouillon');
+  renderDocDetail(documentId); renderView();
+}
+function submitDocVersionUI(documentId, versionNumero){
+  submitDocVersion(documentId, versionNumero);
+  toast('Document soumis pour validation');
+  renderDocDetail(documentId); renderView(); renderNav();
+}
+function compareCheckedDocVersions(documentId){
+  const doc = DB.documents.find(d=>d.id===documentId); if(!doc) return;
+  const checked = Array.from(document.querySelectorAll('.doc-cmp-chk:checked')).map(c=>Number(c.value));
+  if(checked.length!==2){ toast('Cochez exactement 2 versions à comparer'); return; }
+  const [n1,n2] = checked.sort((a,b)=>a-b);
+  const v1 = doc.versions.find(v=>v.numero===n1), v2 = doc.versions.find(v=>v.numero===n2);
+  const box = document.getElementById('doc-compare-box'); if(!box) return;
+  const rows = [
+    ['Fichier', v1.fichier, v2.fichier],
+    ['Auteur', userById(v1.auteur)?.nom||'—', userById(v2.auteur)?.nom||'—'],
+    ['Date', fmtDate(v1.date), fmtDate(v2.date)],
+    ['Statut', STATUT_DOC[computeDocVersionStatut(v1)].label, STATUT_DOC[computeDocVersionStatut(v2)].label],
+    ['Commentaire / réserves', v1.commentaire||'—', v2.commentaire||'—'],
+  ];
+  box.innerHTML = `<p class="muted" style="font-size:11px;margin:12px 0 6px">Comparaison de métadonnées uniquement — cette maquette ne stocke pas de contenu binaire réel de fichier à comparer.</p>
+    <table><thead><tr><th></th><th>v${n1}</th><th>v${n2}</th></tr></thead><tbody>
+    ${rows.map(([lbl,a,b])=>`<tr><td class="muted">${esc(lbl)}</td><td style="${a!==b?'font-weight:700':''}">${esc(a)}</td><td style="${a!==b?'font-weight:700':''}">${esc(b)}</td></tr>`).join('')}
+    </tbody></table>`;
+}
+
+/* ---- Onglet Validation : documents en attente d'une décision, tous chantiers visibles ---- */
+function viewValidationTab(){
+  const ids = visibleChantiers().map(c=>c.id);
+  const rows = [];
+  DB.documents.filter(d=>ids.includes(d.chantierId)).forEach(d=>{
+    const v = docLatestVersion(d);
+    const step = docCurrentStep(v);
+    if(step) rows.push({d,v,step});
+  });
+  rows.sort((a,b)=>{ const sa=stepSLAInfo(a.step), sb=stepSLAInfo(b.step); return ((sb&&sb.enRetard)?1:0)-((sa&&sa.enRetard)?1:0); });
+  if(!rows.length) return `<div class="empty-state"><div class="ico">✅</div>Aucune validation en attente</div>`;
+  return rows.map(({d,v,step})=>{
+    const sla = stepSLAInfo(step);
+    const canDecide = canDecideDocStep(v, d.chantierId);
+    return `<div class="card" style="margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
+        <div>
+          <b>${esc(d.code)} — ${esc(v.fichier)}</b>
+          <div class="muted" style="font-size:12px;margin-top:2px">${esc(chantierById(d.chantierId).nom)}${d.lotId?' · '+esc(lotLabel(d.lotId)):''} · Étape : ${esc(step.label)} (v${v.numero})</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          ${badge(STATUT_DOC, computeDocVersionStatut(v))}
+          ${sla&&sla.enRetard?`<span class="badge badge-red">Retard ${sla.joursEcoules}j</span>`:(sla&&sla.palier?`<span class="badge badge-orange">Relance J+${sla.palier}</span>`:'')}
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+        ${canDecide?`<button class="btn btn-sm btn-secondary" onclick="decideDocStepUI('${d.id}',${v.numero},'valide')">✓ Valider l'étape</button>
+        <button class="btn btn-sm btn-danger" onclick="decideDocStepUI('${d.id}',${v.numero},'rejete')">✗ Rejeter</button>`:''}
+        <button class="btn btn-sm btn-ghost" onclick="openDocDetail('${d.id}')">Voir le détail</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+/* ---- Onglet Circuits : gabarits de circuits d'approbation (admin) ---- */
+function viewCircuitsTab(){
+  return `
+    <p class="muted" style="font-size:12px;margin:0 0 14px">Circuits séquentiels : chaque étape doit être validée pour que la suivante démarre. Un rejet à n'importe quelle étape bloque le circuit.</p>
+    <div style="display:flex;justify-content:flex-end;margin-bottom:14px">
+      <button class="btn btn-primary btn-sm" onclick="openWorkflowForm(null)">+ Nouveau circuit</button>
+    </div>
+    <div class="grid cols-2">
+      ${DB.approvalWorkflows.map(w=>`
+        <div class="card">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+            <div><h3 style="margin:0">${esc(w.nom)}</h3>${w.parDefaut?'<span class="badge badge-blue" style="margin-top:6px;display:inline-block">Circuit par défaut</span>':''}</div>
+            <div style="display:flex;gap:6px">
+              <button class="btn btn-sm btn-ghost" onclick="openWorkflowForm('${w.id}')">✏️</button>
+              ${!w.parDefaut?`<button class="btn btn-sm btn-ghost" onclick="deleteWorkflowTemplate('${w.id}')">🗑️</button>`:''}
+            </div>
+          </div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:12px;align-items:center">
+            ${w.etapes.map((e,i)=>(i>0?'<span class="muted">→</span>':'')+`<span class="badge badge-gray">${i+1}. ${esc(e.label||ROLES[e.role].label)} (${e.delaiJours}j)</span>`).join('')}
+          </div>
+        </div>`).join('')}
+    </div>
+  `;
+}
+function openWorkflowForm(id){
+  const wf = id ? DB.approvalWorkflows.find(w=>w.id===id) : null;
+  window.__wfEtapes = wf ? JSON.parse(JSON.stringify(wf.etapes)) : [{role:'soustraitant',label:'',delaiJours:5}];
+  openModal(`
+    <h2>${wf?'Modifier':'Nouveau'} circuit de validation</h2>
+    <div class="form-row"><label>Nom du circuit</label><input id="wf-nom" value="${wf?esc(wf.nom):''}"></div>
+    <div id="wf-etapes-box"></div>
+    <button class="btn btn-secondary btn-sm" style="margin-top:8px" onclick="wfAddEtape()">+ Ajouter une étape</button>
+    <div class="modal-foot"><button class="btn btn-secondary" onclick="closeModal()">Annuler</button><button class="btn btn-primary" onclick="saveWorkflowForm('${wf?wf.id:''}')">Enregistrer</button></div>
+  `);
+  renderWfEtapes();
+}
+function renderWfEtapes(){
+  const box = document.getElementById('wf-etapes-box'); if(!box) return;
+  box.innerHTML = window.__wfEtapes.map((e,i)=>`
+    <div class="form-grid" style="grid-template-columns:1fr 1fr 90px 34px;gap:8px;align-items:end;margin-top:8px">
+      <div class="form-row" style="margin:0"><label>Étape ${i+1} — Rôle</label>
+        <select onchange="window.__wfEtapes[${i}].role=this.value">${Object.keys(ROLES).map(r=>`<option value="${r}" ${e.role===r?'selected':''}>${ROLES[r].label}</option>`).join('')}</select>
+      </div>
+      <div class="form-row" style="margin:0"><label>Libellé affiché</label><input value="${esc(e.label||'')}" onchange="window.__wfEtapes[${i}].label=this.value"></div>
+      <div class="form-row" style="margin:0"><label>Délai (j)</label><input type="number" min="1" value="${e.delaiJours}" onchange="window.__wfEtapes[${i}].delaiJours=Number(this.value)||1"></div>
+      <button class="btn btn-sm btn-ghost" style="margin-bottom:2px" onclick="wfRemoveEtape(${i})">🗑️</button>
+    </div>`).join('');
+}
+function wfAddEtape(){ window.__wfEtapes.push({role:'conducteur',label:'',delaiJours:5}); renderWfEtapes(); }
+function wfRemoveEtape(i){ if(window.__wfEtapes.length<=1){ toast('Un circuit doit comporter au moins une étape'); return; } window.__wfEtapes.splice(i,1); renderWfEtapes(); }
+function saveWorkflowForm(id){
+  const nom = document.getElementById('wf-nom').value.trim();
+  if(!nom){ toast('Le nom du circuit est obligatoire'); return; }
+  const etapes = window.__wfEtapes.map(e=>({role:e.role, label:e.label||ROLES[e.role].label, delaiJours:e.delaiJours||5}));
+  if(id){ const wf = DB.approvalWorkflows.find(w=>w.id===id); wf.nom=nom; wf.etapes=etapes; }
+  else { DB.approvalWorkflows.push({id:uid('wf'), nom, parDefaut:false, etapes}); }
+  saveDB(); closeModal(); toast('Circuit enregistré'); renderView();
+}
+function deleteWorkflowTemplate(id){
+  if(!confirm('Supprimer ce circuit de validation ?')) return;
+  if(DB.documents.some(d=>d.workflowId===id)){ toast('Impossible : ce circuit est utilisé par au moins un document'); return; }
+  DB.approvalWorkflows = DB.approvalWorkflows.filter(w=>w.id!==id);
+  saveDB(); toast('Circuit supprimé'); renderView();
+}
+
+/* ---- Onglet Audit : piste d'audit qui/quand/quoi/version/commentaire (sans IP, non disponible côté client) ---- */
+function viewAuditTab(){
+  const ids = visibleChantiers().map(c=>c.id);
+  const logs = (DB.auditLogs||[]).filter(l=>!l.chantierId || ids.includes(l.chantierId)).slice().sort((a,b)=>new Date(b.date)-new Date(a.date));
+  if(!logs.length) return `<div class="empty-state"><div class="ico">🕓</div>Aucune action enregistrée</div>`;
+  return `<div class="card"><table>
+    <thead><tr><th>Date</th><th>Utilisateur</th><th>Action</th><th>Document</th><th>Version</th><th>Commentaire</th></tr></thead>
+    <tbody>
+    ${logs.map(l=>{ const d = DB.documents.find(x=>x.id===l.documentId); const u = l.userId?userById(l.userId):null; return `<tr>
+      <td class="muted" style="font-size:12px;white-space:nowrap">${new Date(l.date).toLocaleString('fr-FR')}</td>
+      <td>${u?esc(u.nom):'—'}</td>
+      <td>${esc(AUDIT_ACTION_LABELS[l.action]||l.action)}${l.detail?` <span class="muted" style="font-size:11px">(${esc(l.detail)})</span>`:''}</td>
+      <td>${d?esc(d.code)+' — '+esc(d.nom||''):'<span class="muted">(document supprimé)</span>'}</td>
+      <td>${l.versionNumero?'v'+l.versionNumero:'-'}</td>
+      <td style="font-size:12.5px">${esc(l.commentaire||'-')}</td>
+    </tr>`; }).join('')}
+    </tbody>
+  </table></div>`;
+}
+
+/* ---- Onglet KPI : indicateurs de validation documentaire, globaux et par lot ---- */
+function viewDocsKPITab(){
+  const ids = visibleChantiers().map(c=>c.id);
+  const docs = DB.documents.filter(d=>ids.includes(d.chantierId));
+  const k = docsKPI(docs);
+  const lotsAll = DB.lots.filter(l=>ids.includes(l.chantierId));
+  const byLot = lotsAll.map(l=>({lot:l, k:docsKPI(docs.filter(d=>d.lotId===l.id))})).filter(x=>x.k.total>0);
+  return `
+    <div class="grid cols-4">
+      <div class="bi-kpi" style="--accent-color:#f59e0b"><div class="lbl">En attente de validation</div><div class="val">${k.enAttente}</div><div class="sub">sur ${k.total} document(s)</div></div>
+      <div class="bi-kpi" style="--accent-color:#dc2626"><div class="lbl">Rejetés</div><div class="val">${k.rejetes}</div><div class="sub">${k.rejetes?'à reprendre':'aucun'}</div></div>
+      <div class="bi-kpi" style="--accent-color:#dc2626"><div class="lbl">En retard (SLA)</div><div class="val">${k.retards}</div><div class="sub">délai de validation dépassé</div></div>
+      <div class="bi-kpi" style="--accent-color:#16a34a"><div class="lbl">Taux d'approbation</div><div class="val">${k.tauxApprobation!==null?k.tauxApprobation+'%':'—'}</div><div class="sub">temps moyen : ${k.tempsMoyen!==null?k.tempsMoyen+' j':'—'}</div></div>
+    </div>
+    <div class="section-title"><h2>Détail par lot</h2></div>
+    ${byLot.length?`<div class="card"><table>
+      <thead><tr><th>Lot</th><th>Documents</th><th>En attente</th><th>Rejetés</th><th>En retard</th><th>Taux d'approbation</th><th>Temps moyen</th></tr></thead>
+      <tbody>${byLot.map(({lot,k})=>`<tr>
+        <td>${esc(lot.nom)}</td><td>${k.total}</td><td>${k.enAttente}</td><td>${k.rejetes}</td>
+        <td>${k.retards?`<span class="badge badge-red">${k.retards}</span>`:'0'}</td>
+        <td>${k.tauxApprobation!==null?k.tauxApprobation+'%':'—'}</td>
+        <td>${k.tempsMoyen!==null?k.tempsMoyen+' j':'—'}</td>
+      </tr>`).join('')}</tbody>
+    </table></div>`:`<div class="empty-state"><div class="ico">📊</div>Pas encore de données de lot</div>`}
+  `;
 }
 
 /* ================= RESERVES (global) ================= */
@@ -3087,24 +3737,36 @@ function viewReserves(){
   `;
 }
 
-/* ================= DOCUMENTS (global) ================= */
+/* ================= VALIDATION & CONTRÔLE DOCUMENTAIRE 360 (global) ================= */
 function viewDocuments(){
+  if(ui.docsTab==='circuits' && (!currentUser || currentUser.role!=='admin')) ui.docsTab = 'registre';
   const chantiers = visibleChantiers();
-  return `
-    <div class="page-head">
-      <div><h1>Gestion documentaire (GED)</h1><p>Plans, DCE, DOE, contrats et photos par chantier</p></div>
-      <button class="btn btn-secondary" onclick="downloadAllDocuments()">⬇️ Télécharger tous les documents (.zip)</button>
-    </div>
-    <p class="muted" style="font-size:12px;margin:-8px 0 16px">L'archive générée classe automatiquement chaque document dans le dossier de son chantier et de sa rubrique (Plans, DCE, DOE...).</p>
+  const tabs = [['registre','Registre'],['validation','Validation'],['circuits','Circuits'],['audit','Audit'],['kpi','KPI']]
+    .filter(([k])=> k!=='circuits' || (currentUser && currentUser.role==='admin'));
+  let body = '';
+  if(ui.docsTab==='validation') body = viewValidationTab();
+  else if(ui.docsTab==='circuits') body = viewCircuitsTab();
+  else if(ui.docsTab==='audit') body = viewAuditTab();
+  else if(ui.docsTab==='kpi') body = viewDocsKPITab();
+  else body = `
+    <p class="muted" style="font-size:12px;margin:0 0 16px">L'archive générée classe automatiquement chaque document dans le dossier de son chantier et de sa rubrique (Plans, DCE, DOE...).</p>
     ${chantiers.map(c=>`
       <div class="section-title"><h2>${esc(c.nom)}</h2><a href="#" onclick="navigate('chantiers','${c.id}','documents');return false;" style="color:var(--accent);font-size:13px;font-weight:600">Ouvrir →</a></div>
       ${docTreeHtml(DB.documents.filter(d=>d.chantierId===c.id), c.id)}
     `).join('')}
   `;
+  return `
+    <div class="page-head">
+      <div><h1>Validation & Contrôle Documentaire 360</h1><p>Registre documentaire, circuits d'approbation séquentiels, piste d'audit et pilotage de la validation</p></div>
+      <button class="btn btn-secondary" onclick="downloadAllDocuments()">⬇️ Télécharger tous les documents (.zip)</button>
+    </div>
+    <div class="tabs">${tabs.map(([k,l])=>`<div class="tab ${ui.docsTab===k?'active':''}" onclick="ui.docsTab='${k}';renderView()">${l}</div>`).join('')}</div>
+    ${body}
+  `;
 }
 // Génère et télécharge une archive .zip regroupant tous les documents visibles par l'utilisateur,
 // classés automatiquement par Chantier / Dossier. Cette démo ne stockant pas de fichiers binaires réels,
-// chaque document est représenté par une fiche descriptive (nom, version, statut, auteur, date).
+// chaque document est représenté par une fiche descriptive (code, nom, révision, statut, auteur, date).
 async function downloadAllDocuments(){
   if(typeof JSZip === 'undefined'){ toast('Bibliothèque de compression indisponible (hors-ligne ?)'); return; }
   const chantiers = visibleChantiers();
@@ -3116,7 +3778,7 @@ async function downloadAllDocuments(){
     docs.forEach(d=>{
       const safeDossier = (d.dossier||'Autres').replace(/[\\/:*?"<>|]/g,'-');
       const safeNom = d.nom.replace(/[\\/:*?"<>|]/g,'-');
-      const fiche = `Document : ${d.nom}\nChantier : ${c.nom}\nDossier : ${d.dossier}${d.lotId?'\nLot : '+lotLabel(d.lotId):''}\nVersion : ${d.version}\nStatut : ${STATUT_DOC[d.statut]?STATUT_DOC[d.statut].label:d.statut}\nUploadé par : ${userById(d.uploader).nom}\nDate : ${fmtDate(d.date)}\n\n(Fiche de démonstration — cette maquette ne stocke pas de fichier binaire réel pour ce document.)`;
+      const fiche = `Document : ${d.code} — ${d.nom}\nChantier : ${c.nom}\nDossier : ${d.dossier}${d.lotId?'\nLot : '+lotLabel(d.lotId):''}\nRévision : v${d.version} (${d.versions.length} version(s) dans l'historique)\nStatut : ${STATUT_DOC[d.statut]?STATUT_DOC[d.statut].label:d.statut}\nAuteur : ${userById(d.uploader)?.nom||'—'}\nDate : ${fmtDate(d.date)}\n\n(Fiche de démonstration — cette maquette ne stocke pas de fichier binaire réel pour ce document.)`;
       zip.file(`${safeChantier}/${safeDossier}/${safeNom}.txt`, fiche);
       count++;
     });
