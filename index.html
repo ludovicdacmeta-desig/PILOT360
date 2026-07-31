@@ -449,6 +449,7 @@ const todayISO = () => new Date().toISOString().slice(0,10);
 const fmtDate = (iso) => { if(!iso) return '-'; const d = new Date(iso); return d.toLocaleDateString('fr-FR',{day:'2-digit',month:'short',year:'numeric'}); };
 const addDaysISO = (iso, days) => { const d = new Date(iso+'T00:00:00'); d.setDate(d.getDate()+(days||0)); return d.toISOString().slice(0,10); };
 const daysBetweenISO = (isoStart, isoEnd) => { const a = new Date(isoStart+'T00:00:00'), b = new Date(isoEnd+'T00:00:00'); return Math.round((b-a)/86400000); };
+const fmtFileSize = (bytes) => { if(!bytes) return '0 o'; if(bytes<1024) return bytes+' o'; if(bytes<1024*1024) return Math.round(bytes/1024*10)/10+' Ko'; return Math.round(bytes/1024/1024*10)/10+' Mo'; };
 
 /* ---- Authentification : hachage de mot de passe (SHA-256 pur JS, synchrone, sans dépendance externe) ----
    Remarque : cette application étant 100% statique (aucun serveur), il ne s'agit pas d'un stockage
@@ -711,6 +712,29 @@ const I18N_EN = {
   "Rejet": "Rejection",
   "Nouvelle version": "New version",
   "Suppression du document": "Document deletion",
+  "Annulation": "Cancellation",
+  "↩️ Annuler la soumission (revenir au brouillon)": "↩️ Cancel submission (back to draft)",
+  "Soumission annulée — document remis en brouillon": "Submission cancelled — document set back to draft",
+  "✗ Circuit rejeté": "✗ Workflow rejected",
+  "Ce document doit être repris (nouvelle version) avant de pouvoir être resoumis.": "This document must be revised (new version) before it can be resubmitted.",
+  "Décision annulée — étape remise en attente": "Decision cancelled — step set back to pending",
+  "action réversible via « Annuler la dernière décision »": "reversible action — use \"Undo last decision\"",
+  "↩️ Annuler la décision précédente": "↩️ Undo previous decision",
+  "Statut mis à jour — action réversible via « Annuler »": "Status updated — reversible via \"Undo\"",
+  "Annuler la prise en charge": "Undo taking in charge",
+  "Annuler la validation de la levée": "Undo closure approval",
+  "↩️ Annuler la validation": "↩️ Undo approval",
+  "↩️ Retirer mon évaluation": "↩️ Withdraw my assessment",
+  "Évaluation soumise — réversible via « Retirer mon évaluation »": "Assessment submitted — reversible via \"Withdraw my assessment\"",
+  "Évaluation retirée": "Assessment withdrawn",
+  "Fichier trop volumineux": "File too large",
+  "cette maquette stocke les fichiers dans votre navigateur, sans serveur, d'où cette limite.": "this demo stores files in your browser, with no server, hence this limit.",
+  "Erreur de lecture du fichier": "Error reading the file",
+  "Document ajouté en brouillon avec son fichier — complétez ses métadonnées puis soumettez-le pour validation": "Document added as draft with its file — complete its metadata then submit it for validation",
+  "Nouvelle version ajoutée en brouillon avec son fichier": "New version added as draft with its file",
+  "Sans fichier": "No file",
+  "Télécharger le fichier": "Download file",
+  "Stockage local plein — impossible d'enregistrer. Ce prototype stocke tout dans votre navigateur, sans serveur : essayez un fichier plus petit ou supprimez d'anciens documents.": "Local storage full — could not save. This prototype stores everything in your browser, with no server: try a smaller file or delete older documents.",
   "Planning": "Schedule",
   "Vue Gantt consolidée par chantier": "Consolidated Gantt view by site",
   "Aucune tâche planifiée": "No tasks scheduled",
@@ -1928,7 +1952,44 @@ function migrateDB(db){
   });
   return db;
 }
-function saveDB(){ localStorage.setItem(DB_KEY, JSON.stringify(DB)); }
+// Retourne true si l'enregistrement a réussi. Cette maquette étant 100% locale (aucun serveur), l'espace de
+// stockage du navigateur est limité (quelques Mo) : en cas de dépassement (ex. fichiers volumineux joints à des
+// documents), on prévient l'utilisateur au lieu de laisser l'application planter ou perdre des données.
+function saveDB(){
+  try{
+    localStorage.setItem(DB_KEY, JSON.stringify(DB));
+    return true;
+  }catch(e){
+    toast("Stockage local plein — impossible d'enregistrer. Ce prototype stocke tout dans votre navigateur, sans serveur : essayez un fichier plus petit ou supprimez d'anciens documents.");
+    return false;
+  }
+}
+// Taille max par fichier joint à un document. Cette maquette stocke les fichiers en base64 directement dans le
+// stockage local du navigateur (pas de serveur), dont la capacité totale est limitée à quelques Mo seulement —
+// d'où cette limite, annoncée clairement à l'utilisateur plutôt que de le laisser perdre des données.
+const MAX_DOC_FILE_SIZE = 4*1024*1024; // 4 Mo
+// Ouvre le sélecteur de fichier natif du navigateur (tous formats acceptés) et lit le fichier choisi en base64.
+// callback({name, type, size, dataUrl}) est appelé une fois la lecture terminée ; rien n'est appelé si annulé.
+function pickAndReadFile(callback){
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.style.display = 'none';
+  document.body.appendChild(input);
+  input.addEventListener('change', function(){
+    const file = input.files && input.files[0];
+    document.body.removeChild(input);
+    if(!file) return;
+    if(file.size > MAX_DOC_FILE_SIZE){
+      toast(`Fichier trop volumineux (${Math.round(file.size/1024/1024*10)/10} Mo, maximum ${MAX_DOC_FILE_SIZE/1024/1024} Mo) — cette maquette stocke les fichiers dans votre navigateur, sans serveur, d'où cette limite.`);
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = function(e){ callback({ name:file.name, type:file.type||'application/octet-stream', size:file.size, dataUrl:e.target.result }); };
+    reader.onerror = function(){ toast('Erreur de lecture du fichier'); };
+    reader.readAsDataURL(file);
+  });
+  input.click();
+}
 // Déconnexion forcée : utilisée à la fois par le bouton "Déconnexion" et par toute opération
 // qui remplace intégralement les données (réinitialisation, restauration d'une sauvegarde),
 // afin d'éviter qu'une session reste accrochée à un utilisateur qui n'existe plus (ou plus
@@ -2182,22 +2243,44 @@ function submitDocVersion(documentId, versionNumero){
   const etapesTemplate = docWorkflowTemplate(doc);
   version.dateSoumission = todayISO();
   version.workflow = buildWorkflowInstance(etapesTemplate, todayISO(), []);
+  version.workflow.undoStack = [];
   version.statutManuel = null;
   syncDocMirror(doc); saveDB();
-  logAudit('soumission', doc.id, versionNumero, 'Soumission pour validation');
+  logAudit('soumission', doc.id, versionNumero, '', '');
+}
+// Retire une version du circuit de validation et la remet en brouillon — possible tant qu'aucune étape
+// n'a encore été décidée (erreur de soumission), pour ne jamais laisser une action irréversible par mégarde.
+function undoSubmitDocVersion(documentId, versionNumero){
+  const doc = DB.documents.find(d=>d.id===documentId); if(!doc) return;
+  const version = doc.versions.find(v=>v.numero===versionNumero); if(!version || !version.workflow) return;
+  if((version.workflow.undoStack||[]).length){ return; } // une décision a déjà été prise : utiliser l'annulation d'étape
+  version.workflow = null; version.dateSoumission = null; version.statutManuel = null;
+  syncDocMirror(doc); saveDB();
+  logAudit('annulation', doc.id, versionNumero, '', 'Annulation de la soumission — retour au brouillon');
 }
 // Décide (valide/rejette) l'étape active de la version courante, avec application stricte du séquencement.
+// Chaque décision empile un instantané complet permettant de l'annuler à tout moment via undoLastDocDecision().
 function decideDocStep(documentId, versionNumero, decision, commentaire){
   const doc = DB.documents.find(d=>d.id===documentId); if(!doc) return;
   const version = doc.versions.find(v=>v.numero===versionNumero); if(!version || !version.workflow) return;
   const step = docCurrentStep(version); if(!step) return;
+  if(!version.workflow.undoStack) version.workflow.undoStack = [];
+  const idx = version.workflow.etapes.findIndex(e=>e.ordre===step.ordre);
+  const next = version.workflow.etapes[idx+1];
+  const snapshot = {
+    stepOrdre: step.ordre,
+    prevWorkflowStatutGlobal: version.workflow.statutGlobal,
+    prevReserves: version.reserves,
+    prevActiveVersionNumero: doc.activeVersionNumero,
+    nextStepOrdre: next ? next.ordre : null,
+    oldActiveVersionNumero: null,
+    oldActiveStatutManuel: undefined,
+  };
   step.statut = decision; step.dateDecision = todayISO(); step.decideur = currentUser ? currentUser.id : null; step.commentaire = commentaire||'';
   if(decision==='rejete'){
     version.workflow.statutGlobal = 'rejete';
   } else {
     if(commentaire && commentaire.trim()) version.reserves = true;
-    const idx = version.workflow.etapes.findIndex(e=>e.ordre===step.ordre);
-    const next = version.workflow.etapes[idx+1];
     if(next){ next.statut = 'en_attente'; next.dateDebut = todayISO(); next.dateLimite = addDaysISO(todayISO(), next.delaiJours); }
     else { version.workflow.statutGlobal = 'valide'; }
   }
@@ -2205,12 +2288,48 @@ function decideDocStep(documentId, versionNumero, decision, commentaire){
     // La nouvelle version devient la version active ; l'ancienne version active passe au statut "Périmé".
     if(doc.activeVersionNumero && doc.activeVersionNumero !== version.numero){
       const oldActive = doc.versions.find(v=>v.numero===doc.activeVersionNumero);
-      if(oldActive && (oldActive.statut==='valide' || oldActive.statut==='valide_reserves')) oldActive.statutManuel = 'perime';
+      if(oldActive && (oldActive.statut==='valide' || oldActive.statut==='valide_reserves')){
+        snapshot.oldActiveVersionNumero = oldActive.numero;
+        snapshot.oldActiveStatutManuel = oldActive.statutManuel;
+        oldActive.statutManuel = 'perime';
+      }
     }
     doc.activeVersionNumero = version.numero;
   }
+  version.workflow.undoStack.push(snapshot);
   syncDocMirror(doc); saveDB();
   logAudit(decision==='rejete'?'rejet':'validation', doc.id, versionNumero, commentaire||'', `Étape : ${step.label}`);
+}
+// Une décision de validation/rejet peut-elle être annulée sur cette version (clic par erreur, etc.) ?
+function canUndoLastDocDecision(version, chantierId){
+  if(!version.workflow || !(version.workflow.undoStack||[]).length || !currentUser) return false;
+  if(currentUser.role==='admin') return true;
+  const snap = version.workflow.undoStack[version.workflow.undoStack.length-1];
+  const step = version.workflow.etapes.find(e=>e.ordre===snap.stepOrdre);
+  return step && effectiveRole(currentUser.id, chantierId) === step.role;
+}
+// Annule la dernière décision prise sur cette version, en restaurant exactement l'état précédent
+// (étape suivante, statut global du circuit, version active, statut de l'ancienne version supplantée).
+function undoLastDocDecision(documentId, versionNumero){
+  const doc = DB.documents.find(d=>d.id===documentId); if(!doc) return;
+  const version = doc.versions.find(v=>v.numero===versionNumero); if(!version || !version.workflow || !(version.workflow.undoStack||[]).length) return;
+  const snap = version.workflow.undoStack.pop();
+  const step = version.workflow.etapes.find(e=>e.ordre===snap.stepOrdre);
+  const oldDecision = step.statut;
+  step.statut = 'en_attente'; step.dateDecision = null; step.decideur = null; step.commentaire = '';
+  if(snap.nextStepOrdre){
+    const next = version.workflow.etapes.find(e=>e.ordre===snap.nextStepOrdre);
+    if(next){ next.statut = 'a_venir'; next.dateDecision = null; next.decideur = null; next.commentaire = ''; }
+  }
+  version.workflow.statutGlobal = snap.prevWorkflowStatutGlobal;
+  version.reserves = snap.prevReserves;
+  doc.activeVersionNumero = snap.prevActiveVersionNumero;
+  if(snap.oldActiveVersionNumero){
+    const oldActive = doc.versions.find(v=>v.numero===snap.oldActiveVersionNumero);
+    if(oldActive) oldActive.statutManuel = snap.oldActiveStatutManuel || null;
+  }
+  syncDocMirror(doc); saveDB();
+  logAudit('annulation', doc.id, versionNumero, '', `Annulation de la décision "${oldDecision==='valide'?'Validé':'Rejeté'}" — étape : ${step.label}`);
 }
 // Ajoute une nouvelle version (brouillon) à un document existant, sans jamais supprimer l'historique précédent.
 function addDocVersion(doc, fichier, auteur){
@@ -3168,7 +3287,7 @@ function openLotValidationModal(lotId){
       <div class="modal-foot"><button class="btn btn-secondary" onclick="closeModal()">Fermer</button><button class="btn btn-primary" onclick="submitLotValidation('${lotId}','${myKey}')">Soumettre mon évaluation</button></div>
     ` : (myKey && alreadySubmitted ? `
       <p class="muted" style="margin-top:12px;font-size:12.5px">Vous avez déjà soumis votre évaluation (${alreadySubmitted.pourcentage}%) le ${fmtDate(alreadySubmitted.date)}.</p>
-      <div class="modal-foot"><button class="btn btn-secondary" onclick="closeModal()">Fermer</button></div>
+      <div class="modal-foot"><button class="btn btn-secondary" onclick="closeModal()">Fermer</button><button class="btn btn-ghost" onclick="retractLotValidation('${lotId}','${myKey}')">↩️ Retirer mon évaluation</button></div>
     ` : `<div class="modal-foot"><button class="btn btn-secondary" onclick="closeModal()">Fermer</button></div>`)}
     ${canConfigure ? `
       <div class="section-title" style="margin-top:18px"><h2 style="font-size:14px">Configurer les validateurs (Administration du lot)</h2></div>
@@ -3188,7 +3307,13 @@ function submitLotValidation(lotId, valKey){
   if(!l.validations) l.validations = [];
   l.validations = l.validations.filter(v=>v.valKey!==valKey);
   l.validations.push({ valKey, label, pourcentage:pct, date:todayISO(), commentaire:document.getElementById('lv-comment').value||'' });
-  saveDB(); toast('Évaluation soumise'); closeModal(); renderView();
+  saveDB(); toast('Évaluation soumise — réversible via « Retirer mon évaluation »'); closeModal(); renderView();
+}
+// Une évaluation d'avancement soumise par erreur n'est pas définitive : chacun peut retirer la sienne.
+function retractLotValidation(lotId, valKey){
+  const l = lotById(lotId); if(!l) return;
+  l.validations = (l.validations||[]).filter(v=>v.valKey!==valKey);
+  saveDB(); toast('Évaluation retirée'); closeModal(); renderView();
 }
 function addExtraValidator(lotId){
   const l = lotById(lotId);
@@ -3299,8 +3424,10 @@ function reserveRow(r){
       <div class="muted" style="font-size:11.5px;margin-bottom:6px">Responsable : ${esc(userById(r.responsableId).nom)} · Échéance : ${fmtDate(r.dateLimite)}</div>
       <div class="reserve-actions">
         ${(can('reserve.treat',r.chantierId) && r.statut==='ouverte')?`<button class="btn btn-sm btn-secondary" onclick="setReserveStatus('${r.id}','en_cours')">Prendre en charge</button>`:''}
+        ${(can('reserve.treat',r.chantierId) && r.statut==='en_cours')?`<button class="btn btn-sm btn-ghost" onclick="revertReserveStatus('${r.id}','ouverte')" title="Annuler la prise en charge">↩️ Annuler</button>`:''}
         ${(can('reserve.validate',r.chantierId) && r.statut==='en_cours')?`<button class="btn btn-sm btn-primary" onclick="setReserveStatus('${r.id}','levee')">Valider la levée</button>`:''}
         ${r.statut==='levee'?`<span class="badge badge-green">✓ Traitée</span>`:''}
+        ${(can('reserve.validate',r.chantierId) && r.statut==='levee')?`<button class="btn btn-sm btn-ghost" onclick="revertReserveStatus('${r.id}','en_cours')" title="Annuler la validation de la levée">↩️ Annuler la validation</button>`:''}
         ${can('reserve.treat',r.chantierId)?`<button class="btn btn-sm btn-ghost" onclick="openReserveForm('${r.chantierId}','${r.id}')">✏️ Modifier</button>`:''}
         ${canCRUD('reserves','delete',r.chantierId)?`<button class="btn btn-sm btn-ghost" onclick="deleteReserve('${r.id}')">🗑️</button>`:''}
       </div>
@@ -3313,7 +3440,15 @@ function deleteReserve(id){
 }
 function setReserveStatus(id,statut){
   const r = DB.reserves.find(r=>r.id===id); r.statut=statut; saveDB();
-  toast('Statut mis à jour'); renderView(); renderNav();
+  toast('Statut mis à jour — action réversible via « Annuler »'); renderView(); renderNav();
+}
+// Aucune étape de traitement d'une réserve n'est irréversible : on peut toujours revenir en arrière
+// (ex. « Prendre en charge » cliqué par erreur, ou levée validée trop vite).
+function revertReserveStatus(id, toStatut){
+  const r = DB.reserves.find(r=>r.id===id); if(!r) return;
+  r.statut = toStatut; saveDB();
+  toast('Statut annulé — réserve remise à : ' + (STATUT_RESERVE[toStatut]?STATUT_RESERVE[toStatut].label:toStatut));
+  renderView(); renderNav();
 }
 function openReserveForm(chantierId, reserveId){
   const c = chantierById(chantierId);
@@ -3370,6 +3505,7 @@ function docTreeHtml(docs, chantierId){
       <span class="meta">v${d.version||1}${d.versions.length>1?' / '+d.versions.length:''} · ${esc(userById(d.uploader)?.nom||'—')} · ${fmtDate(d.date)}</span>
       ${badge(STATUT_DOC,d.statut)}
       ${sla&&sla.enRetard?`<span class="badge badge-red" style="font-size:10px">Retard</span>`:''}
+      ${v.fileData?`<a href="${v.fileData}" download="${esc(v.fichier)}" class="btn btn-sm btn-ghost" title="Télécharger le fichier">⬇️</a>`:''}
       <button class="btn btn-sm btn-ghost" onclick="openDocDetail('${d.id}')" title="Détails, versions, circuit">🔍</button>
       ${can('doc.upload',chantierId)?`<button class="btn btn-sm btn-ghost" onclick="openDocForm('${d.id}')">✏️</button>`:''}
       ${canCRUD('documents','delete',chantierId)?`<button class="btn btn-sm btn-ghost" onclick="deleteDoc('${d.id}')">🗑️</button>`:''}
@@ -3384,6 +3520,21 @@ function docTreeHtml(docs, chantierId){
     <div class="doc-tree">${html || `<div class="empty-state"><div class="ico">📁</div>Aucun document</div>`}</div>
   </div>`;
 }
+// Ajoute un document à l'archive ZIP : le fichier réel joint (décodé depuis son data URL base64) s'il existe,
+// sinon une fiche descriptive de démonstration (pour les documents créés avant l'ajout de l'upload réel).
+function addDocToZip(zip, basePath, d, c){
+  const safeDossier = (d.dossier||'Autres').replace(/[\\/:*?"<>|]/g,'-');
+  const v = docLatestVersion(d);
+  if(v.fileData){
+    const safeNom = v.fichier.replace(/[\\/:*?"<>|]/g,'-');
+    const base64 = v.fileData.split(',')[1] || '';
+    zip.file(`${basePath}${safeDossier}/${safeNom}`, base64, {base64:true});
+  } else {
+    const safeNom = d.nom.replace(/[\\/:*?"<>|]/g,'-');
+    const fiche = `Document : ${d.code} — ${d.nom}\nChantier : ${c.nom}\nDossier : ${d.dossier}${d.lotId?'\nLot : '+lotLabel(d.lotId):''}\nRévision : v${d.version} (${d.versions.length} version(s) dans l'historique)\nStatut : ${STATUT_DOC[d.statut]?STATUT_DOC[d.statut].label:d.statut}\nAuteur : ${userById(d.uploader)?.nom||'—'}\nDate : ${fmtDate(d.date)}\n\n(Fiche de démonstration — aucun fichier n'a été joint à ce document.)`;
+    zip.file(`${basePath}${safeDossier}/${safeNom}.txt`, fiche);
+  }
+}
 async function downloadChantierDocuments(chantierId){
   if(typeof JSZip === 'undefined'){ toast('Bibliothèque de compression indisponible (hors-ligne ?)'); return; }
   const c = chantierById(chantierId);
@@ -3391,13 +3542,7 @@ async function downloadChantierDocuments(chantierId){
   if(!docs.length){ toast('Aucun document à exporter'); return; }
   const zip = new JSZip();
   const safeChantier = c.nom.replace(/[\\/:*?"<>|]/g,'-');
-  docs.forEach(d=>{
-    const safeDossier = (d.dossier||'Autres').replace(/[\\/:*?"<>|]/g,'-');
-    const safeNom = d.nom.replace(/[\\/:*?"<>|]/g,'-');
-    const v = docLatestVersion(d);
-    const fiche = `Document : ${d.code} — ${d.nom}\nChantier : ${c.nom}\nDossier : ${d.dossier}${d.lotId?'\nLot : '+lotLabel(d.lotId):''}\nRévision : v${d.version} (${d.versions.length} version(s) dans l'historique)\nStatut : ${STATUT_DOC[d.statut]?STATUT_DOC[d.statut].label:d.statut}\nAuteur : ${userById(d.uploader)?.nom||'—'}\nDate : ${fmtDate(d.date)}\n\n(Fiche de démonstration — cette maquette ne stocke pas de fichier binaire réel pour ce document.)`;
-    zip.file(`${safeDossier}/${safeNom}.txt`, fiche);
-  });
+  docs.forEach(d=>{ addDocToZip(zip, '', d, c); });
   const blob = await zip.generateAsync({type:'blob'});
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -3406,16 +3551,21 @@ async function downloadChantierDocuments(chantierId){
   setTimeout(()=>URL.revokeObjectURL(url), 2000);
   toast(docs.length+' document(s) exporté(s)');
 }
+// Ouvre le sélecteur de fichier (tout format accepté) et crée un nouveau document en brouillon avec le fichier réel joint.
 function uploadDoc(chantierId){
-  const code = nextDocCode();
-  const doc = { id:uid('d'), code, chantierId, lotId:null, dossier:'Plans', workflowId:null, dateCreation:todayISO(),
-    activeVersionNumero:null,
-    versions:[ { numero:1, fichier:'Nouveau_document_'+(DB.documents.length+1)+'.pdf', date:todayISO(), dateSoumission:null,
-      auteur:currentUser.id, statutManuel:null, reserves:false, commentaire:'', workflow:null } ] };
-  syncDocMirror(doc);
-  DB.documents.push(doc);
-  logAudit('creation', doc.id, 1, '', 'Document créé (brouillon)');
-  saveDB(); toast('Document ajouté en brouillon — complétez ses métadonnées puis soumettez-le pour validation'); renderView();
+  pickAndReadFile(function(fileInfo){
+    const code = nextDocCode();
+    const doc = { id:uid('d'), code, chantierId, lotId:null, dossier:'Plans', workflowId:null, dateCreation:todayISO(),
+      activeVersionNumero:null,
+      versions:[ { numero:1, fichier:fileInfo.name, fileData:fileInfo.dataUrl, fileType:fileInfo.type, fileSize:fileInfo.size,
+        date:todayISO(), dateSoumission:null, auteur:currentUser.id, statutManuel:null, reserves:false, commentaire:'', workflow:null } ] };
+    syncDocMirror(doc);
+    DB.documents.push(doc);
+    logAudit('creation', doc.id, 1, '', `Document créé (brouillon) — fichier joint : ${fileInfo.name}`);
+    if(!saveDB()){ DB.documents.pop(); DB.auditLogs.pop(); return; }
+    toast('Document ajouté en brouillon avec son fichier — complétez ses métadonnées puis soumettez-le pour validation');
+    renderView();
+  });
 }
 function openDocForm(id){
   const d = DB.documents.find(x=>x.id===id);
@@ -3470,6 +3620,7 @@ function renderDocDetail(id){
     </div>
 
     ${(computeDocVersionStatut(latest)==='brouillon' && can('doc.upload', d.chantierId)) ? `<button class="btn btn-primary btn-sm" style="margin-bottom:14px" onclick="submitDocVersionUI('${d.id}',${latest.numero})">📤 Soumettre pour validation</button>` : ''}
+    ${(latest.workflow && !(latest.workflow.undoStack||[]).length && (can('doc.upload', d.chantierId)||(currentUser&&currentUser.role==='admin'))) ? `<button class="btn btn-ghost btn-sm" style="margin-bottom:14px" onclick="undoSubmitDocVersionUI('${d.id}',${latest.numero})">↩️ Annuler la soumission (revenir au brouillon)</button>` : ''}
 
     ${latest.workflow ? renderWorkflowStepper(d, latest) : ''}
 
@@ -3479,15 +3630,16 @@ function renderDocDetail(id){
     </div>
     <div class="card">
       <table>
-        <thead><tr><th></th><th>Version</th><th>Fichier</th><th>Auteur</th><th>Date</th><th>Statut</th></tr></thead>
+        <thead><tr><th></th><th>Version</th><th>Fichier</th><th>Auteur</th><th>Date</th><th>Statut</th><th></th></tr></thead>
         <tbody>
         ${versions.map(v=>`<tr>
           <td><input type="checkbox" class="doc-cmp-chk" value="${v.numero}"></td>
           <td>v${v.numero}${d.activeVersionNumero===v.numero?' <span class="badge badge-blue" style="font-size:9.5px">Active</span>':''}</td>
-          <td>${esc(v.fichier)}</td>
+          <td>${esc(v.fichier)}${v.fileData?` <span class="muted" style="font-size:10.5px">(${fmtFileSize(v.fileSize)})</span>`:''}</td>
           <td>${esc(userById(v.auteur)?.nom||'—')}</td>
           <td>${fmtDate(v.date)}</td>
           <td>${badge(STATUT_DOC, computeDocVersionStatut(v))}</td>
+          <td>${v.fileData?`<a href="${v.fileData}" download="${esc(v.fichier)}" class="btn btn-sm btn-ghost" title="Télécharger le fichier">⬇️</a>`:`<span class="muted" style="font-size:10.5px">Sans fichier</span>`}</td>
         </tr>`).join('')}
         </tbody>
       </table>
@@ -3505,12 +3657,15 @@ function renderDocDetail(id){
 }
 const AUDIT_ACTION_LABELS = {
   creation:'Création', soumission:'Soumission pour validation', validation:"Validation d'étape",
-  rejet:'Rejet', nouvelle_version:'Nouvelle version', suppression:'Suppression du document',
+  rejet:'Rejet', nouvelle_version:'Nouvelle version', suppression:'Suppression du document', annulation:'Annulation',
 };
 function renderWorkflowStepper(d, version){
   const canDecide = canDecideDocStep(version, d.chantierId);
+  const canUndo = canUndoLastDocDecision(version, d.chantierId);
   const step = docCurrentStep(version);
   const sla = stepSLAInfo(step);
+  const lastSnap = (version.workflow.undoStack||[]).length ? version.workflow.undoStack[version.workflow.undoStack.length-1] : null;
+  const lastStep = lastSnap ? version.workflow.etapes.find(e=>e.ordre===lastSnap.stepOrdre) : null;
   return `
     <div class="section-title" style="margin:14px 0 10px"><h2 style="font-size:14px">Circuit de validation (v${version.numero})</h2></div>
     <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:10px">
@@ -3531,6 +3686,8 @@ function renderWorkflowStepper(d, version){
         <button class="btn btn-sm btn-danger" onclick="decideDocStepUI('${d.id}',${version.numero},'rejete')">✗ Rejeter</button>
       </div>`:`<p class="muted" style="font-size:11.5px;margin-top:8px">En attente de décision : ${ROLES[step.role].label}</p>`}
     </div>`:''}
+    ${(version.workflow.statutGlobal==='rejete')?`<div class="card" style="background:var(--danger-light);margin-bottom:10px"><b style="font-size:13px;color:var(--danger)">✗ Circuit rejeté</b><p class="muted" style="font-size:12px;margin-top:4px">Ce document doit être repris (nouvelle version) avant de pouvoir être resoumis.</p></div>`:''}
+    ${canUndo && lastStep ? `<button class="btn btn-sm btn-ghost" style="margin-bottom:10px" onclick="undoLastDocDecisionUI('${d.id}',${version.numero})">↩️ Annuler la dernière décision (${esc(lastStep.label)} — ${lastStep.statut==='valide'?'Validé':'Rejeté'} par erreur ?)</button>` : ''}
     ${version.workflow.etapes.filter(e=>e.commentaire).map(e=>`<div class="muted" style="font-size:11.5px;margin-bottom:4px">💬 ${esc(e.label)} : « ${esc(e.commentaire)} »</div>`).join('')}
   `;
 }
@@ -3543,17 +3700,36 @@ function decideDocStepUI(documentId, versionNumero, decision){
     commentaire = prompt('Commentaire ou réserve (facultatif, laissez vide si aucune) :') || '';
   }
   decideDocStep(documentId, versionNumero, decision, commentaire);
-  toast(decision==='valide' ? 'Étape validée' : 'Document rejeté');
+  toast((decision==='valide' ? 'Étape validée' : 'Document rejeté') + ' — action réversible via « Annuler la dernière décision »');
   renderDocDetail(documentId); renderView(); renderNav();
 }
+function undoLastDocDecisionUI(documentId, versionNumero){
+  undoLastDocDecision(documentId, versionNumero);
+  toast('Décision annulée — étape remise en attente');
+  renderDocDetail(documentId); renderView(); renderNav();
+}
+function undoSubmitDocVersionUI(documentId, versionNumero){
+  undoSubmitDocVersion(documentId, versionNumero);
+  toast('Soumission annulée — document remis en brouillon');
+  renderDocDetail(documentId); renderView(); renderNav();
+}
+// Ouvre le sélecteur de fichier (tout format accepté) et ajoute une nouvelle version réelle au document,
+// sans jamais toucher aux versions précédentes (historique non destructif).
 function addDocVersionUI(documentId){
   const doc = DB.documents.find(d=>d.id===documentId); if(!doc) return;
-  const fichier = prompt('Nom du fichier de la nouvelle version :', doc.nom);
-  if(!fichier || !fichier.trim()) return;
-  addDocVersion(doc, fichier.trim(), currentUser.id);
-  saveDB();
-  toast('Nouvelle version ajoutée en brouillon');
-  renderDocDetail(documentId); renderView();
+  pickAndReadFile(function(fileInfo){
+    const v = addDocVersion(doc, fileInfo.name, currentUser.id);
+    v.fileData = fileInfo.dataUrl; v.fileType = fileInfo.type; v.fileSize = fileInfo.size;
+    if(!saveDB()){
+      doc.versions = doc.versions.filter(x=>x.numero!==v.numero);
+      DB.auditLogs.pop();
+      syncDocMirror(doc); saveDB();
+      renderDocDetail(documentId);
+      return;
+    }
+    toast('Nouvelle version ajoutée en brouillon avec son fichier');
+    renderDocDetail(documentId); renderView();
+  });
 }
 function submitDocVersionUI(documentId, versionNumero){
   submitDocVersion(documentId, versionNumero);
@@ -3594,6 +3770,7 @@ function viewValidationTab(){
   return rows.map(({d,v,step})=>{
     const sla = stepSLAInfo(step);
     const canDecide = canDecideDocStep(v, d.chantierId);
+    const canUndo = canUndoLastDocDecision(v, d.chantierId);
     return `<div class="card" style="margin-bottom:10px">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
         <div>
@@ -3608,6 +3785,7 @@ function viewValidationTab(){
       <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
         ${canDecide?`<button class="btn btn-sm btn-secondary" onclick="decideDocStepUI('${d.id}',${v.numero},'valide')">✓ Valider l'étape</button>
         <button class="btn btn-sm btn-danger" onclick="decideDocStepUI('${d.id}',${v.numero},'rejete')">✗ Rejeter</button>`:''}
+        ${canUndo?`<button class="btn btn-sm btn-ghost" onclick="undoLastDocDecisionUI('${d.id}',${v.numero})">↩️ Annuler la décision précédente</button>`:''}
         <button class="btn btn-sm btn-ghost" onclick="openDocDetail('${d.id}')">Voir le détail</button>
       </div>
     </div>`;
@@ -3779,10 +3957,7 @@ async function downloadAllDocuments(){
     const safeChantier = c.nom.replace(/[\\/:*?"<>|]/g,'-');
     const docs = DB.documents.filter(d=>d.chantierId===c.id);
     docs.forEach(d=>{
-      const safeDossier = (d.dossier||'Autres').replace(/[\\/:*?"<>|]/g,'-');
-      const safeNom = d.nom.replace(/[\\/:*?"<>|]/g,'-');
-      const fiche = `Document : ${d.code} — ${d.nom}\nChantier : ${c.nom}\nDossier : ${d.dossier}${d.lotId?'\nLot : '+lotLabel(d.lotId):''}\nRévision : v${d.version} (${d.versions.length} version(s) dans l'historique)\nStatut : ${STATUT_DOC[d.statut]?STATUT_DOC[d.statut].label:d.statut}\nAuteur : ${userById(d.uploader)?.nom||'—'}\nDate : ${fmtDate(d.date)}\n\n(Fiche de démonstration — cette maquette ne stocke pas de fichier binaire réel pour ce document.)`;
-      zip.file(`${safeChantier}/${safeDossier}/${safeNom}.txt`, fiche);
+      addDocToZip(zip, `${safeChantier}/`, d, c);
       count++;
     });
   });
