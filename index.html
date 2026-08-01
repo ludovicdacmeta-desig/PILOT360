@@ -154,6 +154,9 @@ body.dark ::-webkit-scrollbar-thumb{background:#2a3a58;}
 }
 .icon-btn:hover{background:var(--bg);}
 .icon-btn .dot{position:absolute;top:6px;right:6px;width:8px;height:8px;background:var(--danger);border-radius:50%;border:2px solid var(--card);}
+.hamburger-btn{display:none;flex:none;}
+.sidebar-backdrop{display:none;position:fixed;inset:0;background:rgba(10,15,28,.5);z-index:140;}
+.sidebar-backdrop.show{display:block;}
 .user-chip{display:flex;align-items:center;gap:9px;padding:5px 10px 5px 6px;border-radius:30px;border:1px solid var(--border);cursor:pointer;}
 .avatar{width:28px;height:28px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex:none;}
 .user-chip .who b{display:block;font-size:12.5px;line-height:1.2;}
@@ -171,7 +174,28 @@ body.dark ::-webkit-scrollbar-thumb{background:#2a3a58;}
 .cols-3{grid-template-columns:repeat(3,1fr);}
 .cols-2{grid-template-columns:repeat(2,1fr);}
 @media(max-width:1100px){.cols-4{grid-template-columns:repeat(2,1fr);}.cols-3{grid-template-columns:repeat(2,1fr);}}
-@media(max-width:720px){#app.show{grid-template-columns:1fr;}.sidebar{display:none;}.cols-4,.cols-3,.cols-2{grid-template-columns:1fr;}}
+@media(max-width:720px){
+  #app.show{grid-template-columns:1fr;}
+  .cols-4,.cols-3,.cols-2{grid-template-columns:1fr;}
+  /* Menu latéral en tiroir (off-canvas) : masqué hors écran par défaut, ouvert via le bouton ☰ du bandeau supérieur. */
+  .sidebar{
+    position:fixed;top:0;left:0;height:100vh;width:82%;max-width:300px;z-index:150;
+    transform:translateX(-100%);transition:transform .25s ease;box-shadow:0 20px 60px rgba(0,0,0,.35);
+  }
+  .sidebar.mobile-open{transform:translateX(0);}
+  .hamburger-btn{display:flex;}
+  .topbar{flex-wrap:wrap;row-gap:10px;padding:10px 14px;}
+  .topbar .search{order:9;flex:1 1 100%;max-width:none;}
+  .content{padding:14px 14px 50px;}
+  .form-grid{grid-template-columns:1fr;}
+  .card{overflow-x:auto;}
+  .chat-wrap{grid-template-columns:1fr;height:auto;}
+  .chat-list{max-height:180px;border-right:none;border-bottom:1px solid var(--border);}
+  .chat-messages{height:340px;}
+  .chat-msg{max-width:88%;}
+  .gantt-row{grid-template-columns:1fr;gap:4px;}
+  .page-head{flex-direction:column;}
+}
 
 .card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:18px;box-shadow:var(--shadow);}
 .card h3{margin:0 0 4px;font-size:14.5px;}
@@ -380,7 +404,8 @@ body.dark .map-card{background:linear-gradient(135deg,#1e293b,#0f1729);}
 
 <!-- ============ APP ============ -->
 <div id="app">
-  <aside class="sidebar">
+  <div class="sidebar-backdrop" id="sidebar-backdrop" onclick="closeMobileSidebar()"></div>
+  <aside class="sidebar" id="sidebar">
     <div class="brand">
       <div class="logo">360°</div>
       <div><b>PILOT360°</b><small>Gestion de chantier</small></div>
@@ -393,6 +418,7 @@ body.dark .map-card{background:linear-gradient(135deg,#1e293b,#0f1729);}
   <div class="main">
     <div class="offline-banner" id="offline-banner">📶 Mode hors-ligne — vos modifications seront synchronisées à la reconnexion.</div>
     <div class="topbar">
+      <button class="icon-btn hamburger-btn" id="btn-hamburger" title="Menu" onclick="toggleMobileSidebar()">☰</button>
       <div class="search">🔎 <input id="global-search" placeholder="Rechercher un chantier, une réserve, un document..." autocomplete="off" />
         <div id="search-results" class="search-results"></div>
       </div>
@@ -2471,7 +2497,7 @@ function attemptLogin(){
 document.getElementById('btn-login').addEventListener('click', attemptLogin);
 document.getElementById('login-password').addEventListener('keydown', e=>{ if(e.key==='Enter') attemptLogin(); });
 document.getElementById('login-username').addEventListener('keydown', e=>{ if(e.key==='Enter') document.getElementById('login-password').focus(); });
-document.getElementById('nav-logout').addEventListener('click', logout);
+document.getElementById('nav-logout').addEventListener('click', ()=>{ logout(); closeMobileSidebar(); });
 
 /* ---------------- SIDEBAR NAV ---------------- */
 function renderNav(){
@@ -2487,9 +2513,22 @@ function renderNav(){
     </div>`;
   }).join('');
   document.querySelectorAll('[data-nav]').forEach(el=>{
-    el.addEventListener('click', ()=> navigate(el.dataset.nav));
+    el.addEventListener('click', ()=>{ navigate(el.dataset.nav); closeMobileSidebar(); });
   });
 }
+/* ---------------- MENU MOBILE (tiroir) ---------------- */
+// Sur petit écran, le menu latéral est masqué hors champ (transform) et s'ouvre en tiroir par-dessus le
+// contenu via le bouton ☰ du bandeau supérieur. Se referme au choix d'une rubrique, au clic sur le fond
+// assombri, ou avec la touche Échap — pour ne jamais laisser l'utilisateur bloqué sans accès à la navigation.
+function toggleMobileSidebar(){
+  document.getElementById('sidebar').classList.toggle('mobile-open');
+  document.getElementById('sidebar-backdrop').classList.toggle('show');
+}
+function closeMobileSidebar(){
+  document.getElementById('sidebar').classList.remove('mobile-open');
+  document.getElementById('sidebar-backdrop').classList.remove('show');
+}
+document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeMobileSidebar(); });
 
 /* ---------------- TOPBAR ACTIONS ---------------- */
 document.getElementById('btn-darkmode').addEventListener('click', ()=>{
@@ -3502,8 +3541,19 @@ function saveReserve(id){
 }
 
 /* ---- Documents / GED — Registre + Validation & Contrôle Documentaire 360 ---- */
+// Rubriques standard proposées à la création/au déplacement d'un document, complétées par toute rubrique
+// personnalisée déjà utilisée sur le chantier (pour éviter les doublons de type "Contrat"/"Contrats").
+const DOC_FOLDERS_STANDARD = ['Plans','DCE','DOE','Contrats','Photos','Autres'];
+function foldersForChantier(chantierId){
+  const used = [...new Set(DB.documents.filter(d=>d.chantierId===chantierId).map(d=>d.dossier).filter(Boolean))];
+  const all = [...DOC_FOLDERS_STANDARD];
+  used.forEach(f=>{ if(!all.includes(f)) all.push(f); });
+  return all;
+}
 function docTreeHtml(docs, chantierId){
-  const folders = [...new Set(docs.map(d=>d.dossier))];
+  const present = [...new Set(docs.map(d=>d.dossier))];
+  const order = foldersForChantier(chantierId);
+  const folders = order.filter(f=>present.includes(f)).concat(present.filter(f=>!order.includes(f)));
   const html = folders.map(f=>{
     const files = docs.filter(d=>d.dossier===f);
     return `<div class="doc-folder">📁 ${f} <span class="muted" style="font-weight:400;font-size:11.5px">(${files.length})</span></div>
@@ -3519,6 +3569,7 @@ function docTreeHtml(docs, chantierId){
       ${sla&&sla.enRetard?`<span class="badge badge-red" style="font-size:10px">Retard</span>`:''}
       ${v.fileData?`<a href="${v.fileData}" download="${esc(v.fichier)}" class="btn btn-sm btn-ghost" title="Télécharger le fichier">⬇️</a>`:''}
       <button class="btn btn-sm btn-ghost" onclick="openDocDetail('${d.id}')" title="Détails, versions, circuit">🔍</button>
+      ${can('doc.upload',chantierId)?`<button class="btn btn-sm btn-ghost" onclick="moveDocUI('${d.id}')" title="Déplacer vers un autre dossier">📁</button>`:''}
       ${can('doc.upload',chantierId)?`<button class="btn btn-sm btn-ghost" onclick="openDocForm('${d.id}')">✏️</button>`:''}
       ${canCRUD('documents','delete',chantierId)?`<button class="btn btn-sm btn-ghost" onclick="deleteDoc('${d.id}')">🗑️</button>`:''}
     </div>`;
@@ -3563,37 +3614,115 @@ async function downloadChantierDocuments(chantierId){
   setTimeout(()=>URL.revokeObjectURL(url), 2000);
   toast(docs.length+' document(s) exporté(s)');
 }
-// Ouvre le sélecteur de fichier (tout format accepté) et crée un nouveau document en brouillon avec le fichier réel joint.
+// Génère les options <select> pour un choix de dossier (rubriques standard + rubriques déjà utilisées sur
+// ce chantier), avec une option finale "Nouveau dossier…" pour en créer un à la volée.
+function dossierSelectOptions(folders, current){
+  return folders.map(f=>`<option value="${esc(f)}" ${current===f?'selected':''}>${esc(f)}</option>`).join('')
+    + `<option value="__new__" ${current&&!folders.includes(current)?'selected':''}>➕ Nouveau dossier…</option>`;
+}
+// Ouvre une fenêtre de choix du dossier de destination (et du lot), puis déclenche le sélecteur de fichier
+// (tout format accepté) et crée un nouveau document en brouillon avec le fichier réel joint dans ce dossier.
 function uploadDoc(chantierId){
+  const folders = foldersForChantier(chantierId);
+  const lots = lotsForChantier(chantierId);
+  openModal(`
+    <h2>Ajouter un document</h2>
+    <p class="sub">Choisissez le dossier de destination, puis sélectionnez le fichier à joindre (tout format accepté).</p>
+    <div class="form-grid">
+      <div class="form-row"><label>Dossier / rubrique</label><select id="uf-dossier">${dossierSelectOptions(folders, folders[0])}</select></div>
+      <div class="form-row"><label>Lot concerné</label><select id="uf-lot"><option value="">Général (aucun lot)</option>${lots.map(l=>`<option value="${l.id}">${esc(l.nom)}</option>`).join('')}</select></div>
+    </div>
+    <div class="form-row" id="uf-new-dossier-row" style="display:none">
+      <label>Nom du nouveau dossier</label>
+      <input id="uf-new-dossier" placeholder="Ex : Assurances, PV de réception...">
+    </div>
+    <div class="modal-foot"><button class="btn btn-secondary" onclick="closeModal()">Annuler</button><button class="btn btn-primary" onclick="confirmUploadDoc('${chantierId}')">📎 Choisir le fichier…</button></div>
+  `);
+  document.getElementById('uf-dossier').addEventListener('change', function(){
+    document.getElementById('uf-new-dossier-row').style.display = this.value==='__new__' ? 'block' : 'none';
+  });
+}
+function confirmUploadDoc(chantierId){
+  let dossier = document.getElementById('uf-dossier').value;
+  if(dossier==='__new__'){
+    dossier = document.getElementById('uf-new-dossier').value.trim();
+    if(!dossier){ toast('Merci de renseigner le nom du nouveau dossier'); return; }
+  }
+  const lotId = document.getElementById('uf-lot').value || null;
+  closeModal();
   pickAndReadFile(function(fileInfo){
     const code = nextDocCode();
-    const doc = { id:uid('d'), code, chantierId, lotId:null, dossier:'Plans', workflowId:null, dateCreation:todayISO(),
+    const doc = { id:uid('d'), code, chantierId, lotId, dossier, workflowId:null, dateCreation:todayISO(),
       activeVersionNumero:null,
       versions:[ { numero:1, fichier:fileInfo.name, fileData:fileInfo.dataUrl, fileType:fileInfo.type, fileSize:fileInfo.size,
         date:todayISO(), dateSoumission:null, auteur:currentUser.id, statutManuel:null, reserves:false, commentaire:'', workflow:null } ] };
     syncDocMirror(doc);
     DB.documents.push(doc);
-    logAudit('creation', doc.id, 1, '', `Document créé (brouillon) — fichier joint : ${fileInfo.name}`);
+    logAudit('creation', doc.id, 1, '', `Document créé (brouillon) dans le dossier « ${dossier} » — fichier joint : ${fileInfo.name}`);
     if(!saveDB()){ DB.documents.pop(); DB.auditLogs.pop(); return; }
     toast('Document ajouté en brouillon avec son fichier — complétez ses métadonnées puis soumettez-le pour validation');
     renderView();
   });
+}
+// Fenêtre dédiée pour déplacer un document déjà uploadé d'un dossier vers un autre, sans toucher au reste
+// de ses métadonnées ni à son historique de versions.
+function moveDocUI(id){
+  const d = DB.documents.find(x=>x.id===id);
+  if(!d) return;
+  const folders = foldersForChantier(d.chantierId);
+  openModal(`
+    <h2>Déplacer le document</h2>
+    <p class="sub">${esc(d.code)} — ${esc(docLatestVersion(d).fichier)} · actuellement dans « ${esc(d.dossier)} »</p>
+    <div class="form-row"><label>Dossier de destination</label><select id="mv-dossier">${dossierSelectOptions(folders, d.dossier)}</select></div>
+    <div class="form-row" id="mv-new-dossier-row" style="display:none">
+      <label>Nom du nouveau dossier</label>
+      <input id="mv-new-dossier" placeholder="Ex : Assurances, PV de réception...">
+    </div>
+    <div class="modal-foot"><button class="btn btn-secondary" onclick="closeModal()">Annuler</button><button class="btn btn-primary" onclick="confirmMoveDoc('${d.id}')">📁 Déplacer</button></div>
+  `);
+  document.getElementById('mv-dossier').addEventListener('change', function(){
+    document.getElementById('mv-new-dossier-row').style.display = this.value==='__new__' ? 'block' : 'none';
+  });
+}
+function confirmMoveDoc(id){
+  const d = DB.documents.find(x=>x.id===id);
+  if(!d) return;
+  let dossier = document.getElementById('mv-dossier').value;
+  if(dossier==='__new__'){
+    dossier = document.getElementById('mv-new-dossier').value.trim();
+    if(!dossier){ toast('Merci de renseigner le nom du nouveau dossier'); return; }
+  }
+  if(dossier===d.dossier){ closeModal(); return; }
+  const ancien = d.dossier;
+  d.dossier = dossier;
+  syncDocMirror(d);
+  logAudit('modification', d.id, null, '', `Document déplacé du dossier « ${ancien} » vers « ${dossier} »`);
+  if(!saveDB()){ d.dossier = ancien; return; }
+  closeModal(); toast(`Document déplacé vers « ${dossier} »`); renderView();
 }
 function openDocForm(id){
   const d = DB.documents.find(x=>x.id===id);
   if(!d) return;
   const lots = lotsForChantier(d.chantierId);
   const latest = docLatestVersion(d);
+  const folders = foldersForChantier(d.chantierId);
   openModal(`
     <h2>Modifier les métadonnées</h2>
     <div class="form-row"><label>Nom du document (version courante v${latest.numero})</label><input id="df-nom" value="${esc(latest.fichier)}"></div>
     <div class="form-grid">
-      <div class="form-row"><label>Dossier / rubrique</label><input id="df-dossier" value="${esc(d.dossier)}"></div>
+      <div class="form-row"><label>Dossier / rubrique</label><select id="df-dossier">${dossierSelectOptions(folders, d.dossier)}</select></div>
       <div class="form-row"><label>Lot concerné</label><select id="df-lot"><option value="">Général (aucun lot)</option>${lots.map(l=>`<option value="${l.id}" ${d.lotId===l.id?'selected':''}>${esc(l.nom)}</option>`).join('')}</select></div>
+    </div>
+    <div class="form-row" id="df-new-dossier-row" style="display:none">
+      <label>Nom du nouveau dossier</label>
+      <input id="df-new-dossier" placeholder="Ex : Assurances, PV de réception...">
     </div>
     <p class="muted" style="font-size:11px">Le renommage ne modifie que la version courante (v${latest.numero}) ; l'historique des versions précédentes reste inchangé.</p>
     <div class="modal-foot"><button class="btn btn-secondary" onclick="closeModal()">Annuler</button><button class="btn btn-primary" onclick="saveDoc('${d.id}')">Enregistrer</button></div>
   `);
+  document.getElementById('df-dossier').addEventListener('change', function(){
+    document.getElementById('df-new-dossier-row').style.display = this.value==='__new__' ? 'block' : 'none';
+  });
 }
 function deleteDoc(id){
   if(!confirm('Supprimer ce document et tout son historique de versions ? Cette action est irréversible.')) return;
@@ -3607,7 +3736,12 @@ function saveDoc(id){
   if(!nom){ toast('Le nom est obligatoire'); return; }
   const latest = docLatestVersion(d);
   latest.fichier = nom;
-  d.dossier = document.getElementById('df-dossier').value||'Autres';
+  let dossier = document.getElementById('df-dossier').value;
+  if(dossier==='__new__'){
+    dossier = document.getElementById('df-new-dossier').value.trim();
+    if(!dossier){ toast('Merci de renseigner le nom du nouveau dossier'); return; }
+  }
+  d.dossier = dossier||'Autres';
   d.lotId = document.getElementById('df-lot').value||null;
   syncDocMirror(d);
   saveDB(); closeModal(); toast('Document mis à jour'); renderView();
@@ -3631,6 +3765,7 @@ function renderDocDetail(id){
       <div><span class="muted" style="font-size:11.5px">Version active (opposable)</span><div style="margin-top:4px">${active?('v'+active.numero+' — '+esc(active.fichier)):'—'}</div></div>
     </div>
 
+    ${can('doc.upload', d.chantierId) ? `<button class="btn btn-ghost btn-sm" style="margin-bottom:14px" onclick="moveDocUI('${d.id}')">📁 Déplacer vers un autre dossier</button>` : ''}
     ${(computeDocVersionStatut(latest)==='brouillon' && can('doc.upload', d.chantierId)) ? `<button class="btn btn-primary btn-sm" style="margin-bottom:14px" onclick="submitDocVersionUI('${d.id}',${latest.numero})">📤 Soumettre pour validation</button>` : ''}
     ${(latest.workflow && !(latest.workflow.undoStack||[]).length && (can('doc.upload', d.chantierId)||(currentUser&&currentUser.role==='admin'))) ? `<button class="btn btn-ghost btn-sm" style="margin-bottom:14px" onclick="undoSubmitDocVersionUI('${d.id}',${latest.numero})">↩️ Annuler la soumission (revenir au brouillon)</button>` : ''}
 
